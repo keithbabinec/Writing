@@ -1,0 +1,205 @@
+Overview
+MS SQL server doesn’t support arrays or other collection data types, so we can’t directly send in these types as parameters to stored procedures from client applications. But fortunately, SQL does allow us to send in DataTable objects in MS SQL Server 2008 and later. The solution here is to simply convert our collection types into a DataTable object and then pass the DataTable into the stored procedure. This should work for any type that you can restructure into a table format.
+
+Have an array of string or int? This can be converted into a table with one column with one row for each item in the array. Have a dictionary or other key-value pair collection? This becomes a table with two columns. Have a collection of class objects with multiple properties? Make a column for each class property and a row for each collection item.
+
+Using table valued parameters makes it possible to send in a collection of items from your client application to the SQL server in a single roundtrip, without using XML or string parsing. This is helpful in several scenarios. For example, it is easier to delete a large number of records via stored procedure if you can call the delete procedure one time with a collection of record IDs instead of the same stored procedure over and over (one ID at a time). It also makes processing easier when you have other collections, such as key-value pairs that need to be passed into a stored procedure.
+
+Note: At the time of this writing, table valued parameters are not supported for use in Linq to SQL. Hopefully this support is added in the future.
+
+Step 1: Business objects
+The first task is to address the business objects in the client. In the sample application I have defined a very simple class with two properties.
+
+        // code sample 1
+        /// <summary>
+        /// Defines a single item object.
+        /// </summary>
+        class Item
+        {
+            /// <summary>
+            /// Gets or sets the ID of the item.
+            /// </summary>
+            public Guid ID { get; set; }
+            /// <summary>
+            /// Gets or sets the Name of the item.
+            /// </summary>
+            public string Name { get; set; }
+        }
+
+If we add conversion methods to the collection type, we can easily construct the required DataTable objects on demand. The first example extension returns a DataTable with the ID and Name properties of the business objects. The second example extension returns a DataTable with the ID of the each business object.
+
+        // code sample 2
+        /// <summary>
+        /// Defines a collection of item objects.
+        /// </summary>
+        class Items : List<Item>
+        {
+            /// <summary>
+            /// Returns the items as a DataTable.
+            /// </summary>
+            /// <returns><c>DataTable</c></returns>
+            public DataTable GetItemsAsDataTable()
+            {
+                // construct the empty DataTable object with columns.
+                DataTable table = new DataTable();
+                table.Columns.Add("ID", typeof(Guid));
+                table.Columns.Add("Name", typeof(string));
+                // add a single row for each item in the collection.
+                foreach (var item in this)
+                {
+                    table.Rows.Add(item.ID, item.Name);
+                }
+                return table;
+            }
+            /// <summary>
+            /// Returns only the item IDs as a DataTable.
+            /// </summary>
+            /// <returns><c>DataTable</c></returns>
+            public DataTable GetItemIDsAsDataTable()
+            {
+                // construct the empty DataTable object with columns.
+                DataTable table = new DataTable();
+                table.Columns.Add("ID", typeof(Guid));
+                // add a single row for each item in the collection.
+                foreach (var item in this)
+                {
+                    table.Rows.Add(item.ID);
+                }
+                return table;
+            }
+        }
+
+Step 2: SQL database prep
+On the SQL server side we need to prepare the database to accept our table-valued parameters by defining them ahead of time. We then need to ensure that new or existing stored procedures are in place to accept these new table parameters.
+
+For demo purposes I’m assuming that we need to create a database from scratch. Sample 3 (below) creates the following required objects:
+
+• A new table to store our business object (Item)
+• A user defined Table type to store Guids (IDs)
+• A user defined Table type to store Guids (IDs) and Strings (Names) 
+• A stored procedure to remove items, using the table valued parameter.
+• A stored procedure to add items, using the table valued parameter.
+
+Note: that when a stored procedure uses a table-valued parameter, it must be passed as read-only. It cannot be modified inside the stored procedure. If it needs to be modified, then insert the rows into another table variable.
+
+        -- code sample 3
+        create table dbo.ItemsTable
+        (
+            [ID]	uniqueidentifier primary key not null,
+            [Name]	nvarchar(255) not null
+        )
+        create type dbo.IDsAndNamesTable as table
+        (
+            [ID]	uniqueidentifier,
+            [Name]	nvarchar(255)
+        )
+        create type dbo.IDsTable as table
+        (
+            [ID]	uniqueidentifier
+        )
+        go
+        create procedure dbo.AddItems
+        (
+            @Items	[IDsAndNamesTable] readonly
+        )
+        as
+        begin
+            insert into dbo.ItemsTable ( [ID], [Name] )
+            select [ID], [Name] from @Items 
+        end
+        go
+        create procedure dbo.RemoveItems
+        (
+            @IDs	[IDsTable] readonly
+        )
+        as
+        begin
+            delete from dbo.ItemsTable
+            where [ID] in ( select [ID] from @IDs )
+        end
+        go
+
+Step 3: Stored procedure execution
+Once the business objects and the database are prepared, we can add client side code to call the stored procedures. To demonstrate calling the stored procedures and passing in the DataTables, I have added the following code to the sample application.
+
+Note: The SqlDbType on the parameter is SqlDbType.Structured to indicate a user defined table type.
+
+Also, at this location we convert the client collection type into a DataTable via the methods written earlier.
+
+        // code sample 4
+        /// <summary>
+        /// Adds items to the database.
+        /// </summary>
+        /// <param name="items">Collection of items to add.</param>
+        static void AddItemsToDatabase(Items items)
+        {
+            // construct sql connection and sql command objects.
+            using (SqlConnection sqlcon = new SqlConnection("<insert connection string here>"))
+            {
+                using (SqlCommand cmd = new SqlCommand("AddItems", sqlcon))
+                {
+                    // add the table-valued-parameter. 
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.Add("@Items", SqlDbType.Structured).Value = items.GetItemsAsDataTable();
+                    // execute
+                    sqlcon.Open();
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+        /// <summary>
+        /// Removes items from the database.
+        /// </summary>
+        /// <param name="items">Collection of items to remove.</param>
+        static void RemoveItemsFromDatabase(Items items)
+        {
+            // construct sql connection and sql command objects.
+            using (SqlConnection sqlcon = new SqlConnection("<insert connection string here>"))
+            {
+                using (SqlCommand cmd = new SqlCommand("RemoveItems", sqlcon))
+                {
+                    // add the table-valued-parameter. 
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.Add("@IDs", SqlDbType.Structured).Value = items.GetItemIDsAsDataTable();
+                    // execute
+                    sqlcon.Open();
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+Now it’s time for a test run. In the main method I have decided to call the AddItems stored procedure just by passing in a collection:
+
+        // code sample 5
+        static void Main(string[] args)
+        {
+            // add these new items
+            Items items = new Items();
+            items.Add(new Item() { ID = new Guid("EE612E96-1577-4C43-978D-1ACF6BE8A22D"), Name = "Orange" });
+            items.Add(new Item() { ID = new Guid("55D000B9-51E7-43FD-9540-D24ACA711231"), Name = "Yellow" });
+            items.Add(new Item() { ID = new Guid("89DAB4DD-35D2-4BFA-8735-9C6DCFC4110E"), Name = "Green" });
+            items.Add(new Item() { ID = new Guid("F4E0965E-8501-4FFB-A1B7-1D08B6EF3DBC"), Name = "Red" });
+            items.Add(new Item() { ID = new Guid("40F3DFAA-65CD-45EC-814F-3E59E46C95E2"), Name = "Blue" });
+            items.Add(new Item() { ID = new Guid("A453B8C3-E9AF-447E-B847-FC7FA6D822AD"), Name = "Grey" });
+            AddItemsToDatabase(items);
+        }
+
+As expected, it inserted all the items:
+
+I slightly re-arranged the main method to remove some of the existing items:
+
+        // code sample 6
+        static void Main(string[] args)
+        {
+            // remove these existing items
+            Items items = new Items();
+            items.Add(new Item() { ID = new Guid("F4E0965E-8501-4FFB-A1B7-1D08B6EF3DBC"), Name = "Red" });
+            items.Add(new Item() { ID = new Guid("40F3DFAA-65CD-45EC-814F-3E59E46C95E2"), Name = "Blue" });
+            items.Add(new Item() { ID = new Guid("A453B8C3-E9AF-447E-B847-FC7FA6D822AD"), Name = "Grey" });
+            RemoveItemsFromDatabase(items);
+        }
+
+After execution we can see our items were removed correctly:
+
+Conclusion
+Table valued parameters allow you to pass tables full of data directly to a stored procedure. Using methods like the ones defined in code sample 2 will allow you to easily generate DataTables on demand from your client application. Since the custom DataTables can be defined according to your own specifications, there is no technical requirement to limit them to just one or two columns like the samples above. You can leverage them to fit whatever objects or columns that need to be passed in.
