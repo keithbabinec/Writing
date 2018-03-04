@@ -1,0 +1,146 @@
+Situation: you have written a PowerShell script that runs fine when you launch it from PowerShell directly, but fails to start or run when you try to plug it into a schedule task.
+
+What went wrong? This post is an outline of common reasons that your script fails to run in a scheduled task. Always check the basics first, even if you think you have it correct. Run through this list and check out the additional debugging steps at the bottom if you are still stuck.
+<h3>Check User Authentication</h3>
+<ul>
+	<li>If you specified a user account for the run-as context, did you provide the correct username and password?</li>
+</ul>
+<h3>Check User Authorization</h3>
+<ul>
+	<li>If using a built-in account (local system, network service, etc) for the run-as context:
+<ul>
+	<li>Does that security principal have access to the resources it needs?</li>
+	<li><a href="https://stackoverflow.com/a/510225">Understand the different privileges</a> of each built-in account.</li>
+</ul>
+</li>
+	<li>If using a user account for the run-as context:
+<ul>
+	<li>Is the user authorized to login to the system? Local admins group, etc?</li>
+	<li>Does the user have <a href="https://ss64.com/nt/ntrights.html">NT rights to logon as a batch job</a>?</li>
+	<li>Do you require the script to run elevated and you forgot to check the "Run with highest privileges" box?</li>
+	<li>If it used to run correctly but now fails- did the account or password expire?</li>
+</ul>
+</li>
+	<li>Does the run-as context account have authorization to run PowerShell scripts?
+<ul>
+	<li>Hint: re-check the <a href="https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies">execution policy</a> for the system and that account.</li>
+	<li>You may need to pass the <em>-ExecutionPolicy</em> argument in the task arguments.</li>
+</ul>
+</li>
+	<li>Is the run-as context account trying to access network resources and doesn't have rights to do so?</li>
+</ul>
+<h3>Check Task Action Arguments: "Program/Script"</h3>
+<ul>
+	<li>Normally this value is just: <em>PowerShell.exe</em>
+<ul>
+	<li>Did you check for typos here?</li>
+	<li>Did you accidentally place additional arguments besides the program name?</li>
+</ul>
+</li>
+</ul>
+<h3>Check Task Action Arguments: "Add Arguments"</h3>
+<ul>
+	<li>The simplest way to launch a script is to just specify the file parameter followed by the script location.
+<ul>
+	<li>Example: <em>-File "C:\scripts\myscript.ps1"</em></li>
+</ul>
+</li>
+	<li>Did you check to ensure that exact file on disk exists?</li>
+	<li>Did you check to ensure that the run-as context has permission to read/execute the script file?</li>
+	<li>Does your script path have spaces in it, and you forgot to wrap the path in quotes?</li>
+	<li>Did you wrap you script path in single quote characters, instead of double quotes?</li>
+	<li>Did you pass additional script arguments and mess up the quoting?</li>
+</ul>
+<h3>Check Task Action Arguments: "Start In"</h3>
+<ul>
+	<li>Did you correctly set (or not set) this path value?
+<ul>
+	<li>The start location for <em>PowerShell.exe</em> under the scheduled task user's context may not be the same as your own development path.</li>
+	<li>If your script references relative paths, then do these paths now break if the script is executed under a different path?</li>
+</ul>
+</li>
+</ul>
+<h3>Check the run-as context user profile</h3>
+<ul>
+	<li>When starting <em>PowerShell.exe</em>, by default it loads the calling user's Windows user profile - unless the <em>-NoProfile</em> argument has been passed in.</li>
+	<li>Why does that matter?
+<ul>
+	<li>If the run-as user has never "logged on" to the system before, then no user profile will be present on disk.
+<ul>
+	<li>If you then try to launch <em>PowerShell.exe</em> as that user without specifying the <em>-NoProfile </em>argument, it will fail to start.</li>
+</ul>
+</li>
+	<li>So ensure that you pass in the <em>-NoProfile</em> argument <em>OR</em> that the run-as context user has logged onto the system at least one time.</li>
+</ul>
+</li>
+</ul>
+<h3>Check for module loading problems</h3>
+<ul>
+	<li>Does your script load any modules?
+<ul>
+	<li>Are those modules installed on this system?</li>
+	<li>Are those modules installed in the correct scope? (Local user, vs All users scope)</li>
+	<li>Are those modules installed as the correct version (outdated)?</li>
+	<li>Are the modules present, but fail to load? See the error handling section below.</li>
+</ul>
+</li>
+</ul>
+<h3>Check for interactive launched items</h3>
+<ul>
+	<li>PowerShell scripts executed under a scheduled task will launch with Batch logon, not an interactive logon type.
+<ul>
+	<li>Does your script mistakenly launch any interactive items?
+<ul>
+	<li>For example: <em>Login-AzureRMAccount</em> loads an interactive prompt.</li>
+</ul>
+</li>
+	<li>Does the script mistakenly launch any commands that would trigger a confirmation warning? Ensure you pass <em>-Force</em> switches when required.</li>
+</ul>
+</li>
+</ul>
+<h3>Check for 32-bit vs 64-bit conflicts</h3>
+<ul>
+	<li>PowerShell actually comes in 32-bit and 64-bit flavors.
+<ul>
+	<li>Are you launching the correct version for your script?</li>
+	<li>Does your script rely on specific 32-bit or 64-bit actions/activity? For example the Registry is a common one.</li>
+	<li>Does your script rely on a PowerShell module that is only supported in one architecture?</li>
+</ul>
+</li>
+</ul>
+<h3>Check Windows PowerShell versions</h3>
+<ul>
+	<li>Did you write the script for PowerShell 5.0, but the system it runs on only supports PowerShell 3.0? Check that the cmdlets and syntax you used are supported on the system running the task.</li>
+	<li>Did you write the script on PowerShell Core, and trying to run it on a system with Windows PowerShell? Check your compatibility.</li>
+</ul>
+<h3>Help, it still doesn't work!</h3>
+Here are some helpful techniques to debug errors that happen inside the script:
+<ul>
+	<li>Add some detailed logging.
+<ul>
+	<li>Add logging messages inside your script, to log to the Windows Event log as a <a href="https://keithbabinec.com/2017/09/30/windows-event-log-custom-source-tips/">custom source</a>, or even simpler- just Out-File to write stuff straight to a text file for debugging statements.</li>
+	<li>Sprinkle trace logging messages before/after key sections that you think might be breaking down. This can help identify where in the script that things stop working.</li>
+</ul>
+</li>
+	<li>Add some <a href="https://blogs.msdn.microsoft.com/kebab/2013/06/09/an-introduction-to-error-handling-in-powershell/">error handling</a>.
+<ul>
+	<li>Set the <em>-ErrorAction</em> parameter on cmdlets to <em>'Stop'</em>, and/or set the <em>$ErrorActionPreference</em> setting to <em>'Stop'</em>, to allow errors to crash the script.</li>
+	<li>Add try/catch blocks to log the specific errors you are getting, via the logging you setup above.</li>
+	<li>This is critical- as the script may be hitting non-terminating errors and continuing through execution. Without logging and excepting handling, you are in the dark here.</li>
+</ul>
+</li>
+	<li>Add your own exit codes.
+<ul>
+	<li>If your script fails, having it fail with a specific non-zero exit code is helpful from the point of the task scheduler, so it knows things failed.</li>
+	<li>The worst thing to do is have your script exit with success (0), but really be failed.</li>
+</ul>
+</li>
+	<li>Simplify the script:
+<ul>
+	<li>Start by temporarily removing all of the script code in your file.</li>
+	<li>Slowly add back small sections, piece-by-piece, and run the partial script under the scheduled task.</li>
+	<li>First section works? Great, add the next section, and repeat until it breaks.</li>
+	<li>Same procedure applies for a complicated set of arguments passed into the script via the task scheduler. Start small, then add more.</li>
+</ul>
+</li>
+</ul>
