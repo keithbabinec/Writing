@@ -1,0 +1,85 @@
+<h3>About Deployment Slots</h3>
+Azure web app service has a fantastic feature called "Deployment Slots", available on standard or premium mode <a href="https://azure.microsoft.com/en-us/pricing/details/app-service/">pricing tiers</a>. This feature allows you to spin up multiple <em>slots</em> (full instances) of your web application for test/development and staging uses.
+
+What's great about using deployment slots? First - you can test changes to your application in the cloud without impacting production. Second, using the 'swap' feature allows you to seamlessly promote a secondary slot into the primary production slot. This means you can perform web application code updates with no user impact or downtime.
+
+When a slot swap occurs, the source IIS instance is 'warmed up' for you immediately before the swap. This allows new incoming web requests to be immediately be serviced at the swap destination.
+<h3>Slot settings and extensions</h3>
+Since deployment slots are full app service instances - they have their own separate configuration, url/bindings, app settings, and extensions. When you create a new slot, the settings can to be cloned from another instance/slot if needed. If you have extensions or webjobs running in production, those will also need to be installed in the deployment slots separately because they aren't included in the settings to be cloned.
+
+Azure app service settings also have a flag called 'Slot Setting'. Checking that box for a setting means that the setting and value will not migrate to another slot when you perform a swap. An example might be a database connection string that only applies to staging and not production. You don't want that setting value moved to production when you promote that instance to the production slot - you want it to stick to whatever is running in the staging slot. [<a href="https://docs.microsoft.com/en-us/azure/app-service-web/web-sites-staged-publishing">Further reading</a>].
+<h3>Automating deployment slots with PowerShell</h3>
+You will need to have the Azure PowerShell module installed and understand how to connect to your Azure resources. <a href="http://keithbabinec.com/2017/04/23/azure-powershell-cmdlets-and-connectivity-basics/">This article</a> covers that.
+
+In our example scenario, I have created a web application called "keithbabinec-test1", in a resource group called "TestRG1". I run <em>Get-AzureRmWebApp</em> just to make sure we can see/access our web application in PowerShell. If you can't find your website, the later commands won't work because you probably have a resource access issue.
+
+[code language="text"]
+PS C:\> $mysite = Get-AzureRmWebApp -Name "keithbabinec-test1"
+PS C:\> $mysite | fl Name, State, HostNames
+
+Name      : keithbabinec-test1
+State     : Running
+HostNames : {keithbabinec-test1.azurewebsites.net}
+[/code]
+
+To create a new slot, we run the <em>New-AzureRmWebAppSlot</em> cmdlet. Provide the resource group name, the web application name, and the name of the slot to be created.
+
+[code language="text"]
+PS C:\> New-AzureRmWebAppSlot -ResourceGroupName "TestRG1" -Name "keithbabinec-test1" -Slot "Staging"
+
+SiteName                  : keithbabinec-test1(Staging)
+State                     : Running
+HostNames                 : {keithbabinec-test1-staging.azurewebsites.net}
+...
+[/code]
+
+A new web application output is dumped to the console/pipeline. We can see the <em>staging</em> name appended in the new url/hostname provided from Azure.
+
+To remove the slot, simply run Remove-AzureRmWebAppSlot with the same parameters.
+
+[code language="text"]
+PS C:\> Remove-AzureRmWebAppSlot -ResourceGroupName "TestRG1" -Name "keithbabinec-test1" -Slot "Staging"
+[/code]
+
+Reminder: these are full web application instances that can be stopped and started just like production. Here are the examples for start & stop actions.
+
+[code language="text" highlight="4"]
+PS C:\> Stop-AzureRmWebAppSlot -ResourceGroupName "TestRG1" -Name "keithbabinec-test1" -Slot "Staging"
+
+SiteName                  : keithbabinec-test1(Staging)
+State                     : Stopped
+HostNames                 : {keithbabinec-test1-staging.azurewebsites.net}
+...
+[/code]
+
+[code language="text" highlight="4"]
+PS C:\> Start-AzureRmWebAppSlot -ResourceGroupName "TestRG1" -Name "keithbabinec-test1" -Slot "Staging"
+
+SiteName                  : keithbabinec-test1(Staging)
+State                     : Running
+HostNames                 : {keithbabinec-test1-staging.azurewebsites.net}
+...
+[/code]
+
+Want to list already created slots? Run this:
+
+[code language="text"]
+PS C:\> Get-AzureRmWebAppSlot -ResourceGroupName "TestRG1" -Name "keithbabinec-test1"
+
+SiteName                  : keithbabinec-test1(Staging)
+State                     : Running
+HostNames                 : {keithbabinec-test1-staging.azurewebsites.net}
+...
+[/code]
+
+<em><strong>Tip:</strong></em> When you run <em>Get-AzureRmWebAppSlot</em> to list the slots for a web application, you won't see the <em>production</em> slot in the output. It just shows the secondary slots you have created. The <em>production</em> slot always exists and is named 'production' for the purposes of slot related commands. Here is the swap command:
+
+[code language="text"]
+PS C:\> Switch-AzureRmWebAppSlot -ResourceGroupName "TestRG1" -Name "keithbabinec-test1" -SourceSlotName "Staging" -DestinationSlotName "Production"
+[/code]
+
+You can swap with production, or swap with another named slot. In the example above I swapped with the implicitly named production slot.
+
+When the swap is successful, no output will be dumped to the PowerShell console/pipeline. If the source or destination slot aren't found, for example, you will receive errors.
+<h3>Slot access</h3>
+Depending on how you created the slot and if you cloned from a configuration - newly created slots are likely public-accessible by default at the hostname/url provided by Azure. It would be wise to lock down those slot instances if you don't want the world to see the secondary slots. One way to do this would be to configure dynamic IP restrictions in the web application settings for the slots you create.
