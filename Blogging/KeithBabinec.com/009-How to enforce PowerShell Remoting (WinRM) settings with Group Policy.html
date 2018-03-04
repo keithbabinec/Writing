@@ -1,0 +1,67 @@
+Remote connectivity in PowerShell leverages a few different technologies under the hood. For example, cmdlets that provide a <em>-ComputerName</em> parameter usually connect with RPC, WMI, or WinRM.
+
+Most of the truly interesting remote capabilities come through WinRM. It allows you to enter and maintain remote console sessions, invoke remote scriptblocks, and more. One drawback is that the configuration is slightly more involved than just opening a firewall port. Fortunately we can use Group Policy to enable remoting and enforce the settings on a large scale. The group policy object (GPO) settings below do just that.
+<h3>Requirements</h3>
+WinRM requires PowerShell 2.0 or later. This is baked in automatically on Windows 7 or newer clients, and Windows 2008 R2 or newer servers. These instructions will not work for machines with operating systems below this requirement.
+<h3>GPO Settings</h3>
+<h4>Policy 1: Allow WinRM Management</h4>
+<ol>
+	<li><span style="text-decoration:underline;"><strong>Section</strong>:</span> Computer Configuration > Policies > Administrative Templates > Windows Components > Windows Remote Management (WinRM) > WinRM Service</li>
+	<li><span style="text-decoration:underline;"><strong>Setting:</strong></span> Allow Remote Server management through WinRM</li>
+	<li><span style="text-decoration:underline;"><strong>Values:</strong></span>
+<ol>
+	<li>Enabled</li>
+	<li>IPv4 Filter: *</li>
+	<li>IPv6 Filter: *</li>
+</ol>
+</li>
+</ol>
+<h4>Policy 2: Enable WinRM Firewall Rule</h4>
+<ol>
+	<li><span style="text-decoration:underline;"><strong>Section:</strong></span> Computer Configuration > Policies > Windows Settings > Security Settings > Windows Firewall with Advanced Security > Windows Firewall with Advanced Security - ... > Inbound Rules</li>
+	<li><span style="text-decoration:underline;"><strong>Action:</strong></span> Right Click > Create New Rule</li>
+	<li><span style="text-decoration:underline;"><strong>Values:</strong></span>
+<ol>
+	<li>RuleType: Predefined: Windows Remote Management</li>
+	<li>PredefinedRules: (leave default 2 rules)</li>
+	<li>Action: Allow the connection</li>
+</ol>
+</li>
+</ol>
+<h4>Policy 3: Ensure WinRM Service Starts</h4>
+<ol>
+	<li><span style="text-decoration:underline;"><strong>Section:</strong></span> Computer Configuration > Policies > Windows Settings > Security Settings > System Services</li>
+	<li><span style="text-decoration:underline;"><strong>Service:</strong></span> Windows Remote Management (WS-Management)</li>
+	<li><span style="text-decoration:underline;"><strong>Action:</strong></span> Right Click > Properties</li>
+	<li><span style="text-decoration:underline;"><strong>Values:</strong></span>
+<ol>
+	<li>Define this policy: Checked</li>
+	<li>Startup mode: Automatic</li>
+</ol>
+</li>
+</ol>
+<h4>Policy 4: Ensure WinRM Service Restarts on Failure</h4>
+<ol>
+	<li><span style="text-decoration:underline;"><strong>Section:</strong></span> Computer Configuration > Preferences > Control Panel Settings > Services</li>
+	<li><span style="text-decoration:underline;"><strong>Action:</strong></span> Right Click > New > Service</li>
+	<li><span style="text-decoration:underline;"><strong>Values:</strong></span>
+<ol>
+	<li>General Tab
+<ol>
+	<li>Startup: No change</li>
+	<li>Service name: WinRM</li>
+	<li>Service action: Start service</li>
+</ol>
+</li>
+	<li>Recovery Tab
+<ol>
+	<li>First failure: Restart</li>
+	<li>Second failure: Restart</li>
+	<li>Subsequent failures: Restart</li>
+	<li>Restart service after: 5 minutes</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+ 
