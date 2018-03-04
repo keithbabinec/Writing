@@ -1,0 +1,84 @@
+<h3>Background</h3>
+I will be writing about some Azure features and related automation in upcoming blog posts. This post can be a quick reference for anyone unfamiliar with how to get up and running with Azure PowerShell. That includes installing and updating the cmdlets, and how to connect to your Azure resources via PowerShell.
+
+In order to run the Azure PowerShell cmdlets, you first need to install the Azure PowerShell module.
+<h3>Prerequisites</h3>
+The module installation requires a prerequisite called <em>PowerShellGet</em>. If you are on Windows 10, Server 2016, or later - then this is already installed for you. If not, see <a href="https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps">this article</a> for how to get it.
+<h3>Check version</h3>
+Check if you have the module installed already. You should receive no output if the module isn't installed. If the module is installed, you should see the version number.
+
+[code language="text" title="Not installed"]
+PS C:\Users\testvm1admin> Get-Module AzureRM -List | fl Name, Version
+PS C:\Users\testvm1admin>
+[/code]
+
+[code language="text" title="Already installed"]
+PS C:\Users\testvm1admin> Get-Module AzureRM -List | fl Name, Version
+
+Name    : AzureRM
+Version : 3.8.0
+[/code]
+<h3>Install or Update</h3>
+When you install the module, it will prompt you to install the nuget provider and trust the repository. Enter 'Y' to both prompts. You should see a flurry of progress bars as it installs everything.
+
+[code language="text" title="Install the module"]
+PS C:\Users\testvm1admin> Install-Module -Name AzureRM
+
+NuGet provider is required to continue
+PowerShellGet requires NuGet provider version '2.8.5.201' or newer to interact with NuGet-based repositories. The NuGet
+ provider must be available in 'C:\Program Files\PackageManagement\ProviderAssemblies' or
+'C:\Users\testvm1admin\AppData\Local\PackageManagement\ProviderAssemblies'. You can also install the NuGet provider by
+running 'Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force'. Do you want PowerShellGet to install
+and import the NuGet provider now?
+[Y] Yes  [N] No  [S] Suspend  [?] Help (default is "Y"): Y
+
+Untrusted repository
+You are installing the modules from an untrusted repository. If you trust this repository, change its
+InstallationPolicy value by running the Set-PSRepository cmdlet. Are you sure you want to install the modules from
+'PSGallery'?
+[Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is "N"): Y
+
+PS C:\Users\testvm1admin>
+[/code]
+
+You can update the module using the update-module cmdlet. Use the -force switch to force a re-install if the module is already current.
+
+[code language="text" title="Update the module"]
+PS C:\Users\testvm1admin> Update-Module -Name AzureRM -force
+[/code]
+<h3>Connecting to Azure (Interactive)</h3>
+Once you have the Azure PowerShell module installed, you can connect to Azure interactively or via service principal.
+
+Interactive logon requires you (the Azure account administrator) to be present and type in Microsoft Account credentials in a browser window launched from the Login-AzureRmAccount cmdlet. Just run the cmdlet with no parameters. After you follow the prompts and enter your credentials, the cmdlet dumps your Subscription and Tenant information.
+
+[code language="text" title="Interactive logon example"]
+PS C:\Users\testvm1admin> Login-AzureRmAccount
+
+Environment           : AzureCloud
+Account               : Email@Company.com
+TenantId              : 29930798-ee74-4adf-bbb5-cff7761f3970
+SubscriptionId        : 5ad13344-5899-4015-8dc2-101956847c45
+SubscriptionName      : Pay-As-You-Go
+CurrentStorageAccount :
+[/code]
+<h3>Connecting to Azure (For Automation)</h3>
+Interactive logon cannot be used for fully automated/scripted scenarios. For that you need to <a href="https://docs.microsoft.com/en-us/powershell/azure/create-azure-service-principal-azureps">create a service principal</a> in Azure active directory, and grant that principal access to resources [<a href="https://docs.microsoft.com/en-us/azure/azure-resource-manager/resource-group-create-service-principal-portal">Additional reading</a>]. You must complete that step before the following commands.
+
+Before running Login-AzureRmAccount, create a <em><a href="https://msdn.microsoft.com/en-us/library/system.management.automation.pscredential(v=vs.85).aspx">PSCredential</a></em> object for the service principal. The following command is interactive, but there are ways of creating this without interactivity by using clear text (unsafe), or retrieving stored credentials. Use the "Application ID" generated during service principal creation as the User Name. The password ends up being the API key.
+
+[code language="text" title="Service principal example (part 1)"]
+PS C:\Users\testvm1admin> $cred = Get-Credential -UserName "487d0dda-db92-46a0-9c33-2f78a7c77bac"
+[/code]
+
+[code language="text" title="Service principal example (part 2)"]
+PS C:\Users\testvm1admin> Login-AzureRmAccount -Credential $cred -ServicePrincipal -TenantId 29930798-ee74-4adf-bbb5-cff7761f3970
+
+Environment           : AzureCloud
+Account               : 487d0dda-db92-46a0-9c33-2f78a7c77bac
+TenantId              : 29930798-ee74-4adf-bbb5-cff7761f3970
+SubscriptionId        : 5ad13344-5899-4015-8dc2-101956847c45
+SubscriptionName      : Pay-As-You-Go
+CurrentStorageAccount :
+[/code]
+
+When you pass the credential and tenant ID, it ends up logging you in as the service principal instead of using your Microsoft account credentials. The output is similar to the interactive run of the cmdlet. Just notice the <em>Account</em> property is the AppID instead of a Microsoft Account email.
