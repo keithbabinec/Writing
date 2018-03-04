@@ -1,0 +1,45 @@
+<h3>Why Azure WebJobs?</h3>
+Azure <a href="https://docs.microsoft.com/en-us/azure/app-service-web/web-sites-create-web-jobs">WebJobs</a> are a great resource included in Azure <a href="https://azure.microsoft.com/en-us/services/app-service/">App Service</a> plans. They provide a way for you to run binaries or scripts that perform scheduled or event-triggered job processing for work that isn't suited to be done during a normal web request. Have a monthly cleanup task for your website? Sending a big batch of emails? Need to process some user uploaded files? These are all great examples of things you can throw into a WebJob.
+<h3>How/where do they run?</h3>
+When a WebJob is executed it shares the same CPU context/resources as the app service it is hosted with. So if you write CPU intensive jobs they will impact the performance of the app service instance. Thankfully most common website maintenance tasks aren't too CPU intensive so the performance impact is negligible. A nice thing about the shared process space is that WebJobs have access to your existing App Service's <a href="http://keithbabinec.com/2017/05/12/how-to-configure-azure-web-application-settings-via-powershell/">application settings</a>.
+
+If you want something to run outside of the app service context, I would recommend looking at <a href="https://azure.microsoft.com/en-us/services/functions/">Azure Functions</a> - the serverless on-demand compute option. When deciding between Azure Functions and WebJobs - consider the cost as well. You will need to pay for Azure Function usage based on resource consumption and executions. Whereas Azure WebJobs are free; they come with the app-service plan you are already paying for.
+
+WebJobs can have no schedule (run on demand), they can be scheduled to execute on a timer, and they can run continuously.
+
+<em><strong>Note</strong><strong>:</strong></em> The <em>always-on</em> setting for app service instances should be enabled if you want reliable WebJob trigger/execution. Otherwise WebJobs won't run when your app is unloaded for inactivity.
+<h3>Continuous WebJobs</h3>
+A common pattern for the <em>continuous</em> WebJob schedule is to process Azure <a href="https://docs.microsoft.com/en-us/azure/storage/storage-dotnet-how-to-use-queues">Storage Queue</a> messages. The function(s) inside a WebJob can be configured with a queue message trigger <a href="https://docs.microsoft.com/en-us/azure/app-service-web/websites-dotnet-webjobs-sdk-storage-queues-how-to">using the WebJobs SDK.</a> This automatically executes the function when a new message arrives in the queue.
+
+[code language="csharp" title="Functions.cs"]
+public static async Task ProcessQueueMessageAsync([QueueTrigger("EmailMessageQueue")] string message, TextWriter log)
+[/code]
+
+In the example above, the queue name is hardcoded, but this can also be derived from an environment variable.
+<h3>Scheduled WebJobs</h3>
+For scheduled WebJobs you define the schedule in the <em>settings.job</em> file. The <em>settings.job</em> file is a JSON blob that sits in the root of your WebJob project. Set the properties for this file in Visual Studio to 'Copy to output directory: Always' so the file is deployed with your compiled binaries. Use a CRON expression to define the execution schedule.
+
+[code language="csharp" title="Functions.cs"]
+[NoAutomaticTrigger]
+public static async Task FindNotificationsToProcessAsync(TextWriter log)
+[/code]
+
+[code language="text" title="settings.job"]
+{
+  "schedule": "0 */15 * * * *"
+}
+[/code]
+
+When the trigger from <em>settings.job</em> is fired, the WebJob is executed and any functions you have defined can then be called to run. In the above example I used the <em>NoAutomaticTrigger</em> attribute on the function and then would call the function from <em>program.cs</em> in the WebJob.
+<h3>WebJob Scaling</h3>
+Since WebJobs are tied directly to App Service instances, they automatically scale with the number of App Service instances you have deployed. For example if you have 1 App Service instance for your web app, there will be just 1 instance of the WebJob. If you have multiple instances or multiple deployment slots, then you have increased the number of WebJob instances at a 1:1 ratio with App Service instances.
+
+There is an additional level of scaling that can occur inside continuous queue triggered WebJob functions: the batch size. When the WebJob SDK grabs messages from the queue for processing, it grabs a chunk of messages at a time (defaults to 16). You can change this setting up or down based on your needs. It grabs these messages and processes them in parallel.
+
+Since you can have many WebJobs deployed to a single app service instance, you can also consider breaking up a single large WebJob into multiple smaller WebJobs. Or spreading WebJobs across different Web Apps or Deployment Slots.
+<h3>WebJob Singletons</h3>
+There are plenty of reasons you wouldn't want to a WebJob to scale up with your instance count. For this reason we have the <em>is_singleton</em> property in the settings.job file. Set this value to <em>true</em> and it will ensure the Web App only runs a single instance of your WebJob.
+
+When designing a new WebJob, think about what would happen to the job should there by more than one instance running at the same time. Write your WebJob code with parallel execution in mind. Thankfully for queue message triggers there is some <a href="https://docs.microsoft.com/en-us/azure/app-service-web/websites-dotnet-webjobs-sdk-storage-queues-how-to#trigger">built-in safety</a>:
+<blockquote>If your web app runs on multiple instances, a continuous WebJob runs on each machine, and each machine will wait for triggers and attempt to run functions. The WebJobs SDK queue trigger automatically prevents a function from processing a queue message multiple times; functions do not have to be written to be idempotent</blockquote>
+You can also set the batch size to 1 to avoid parallel execution on continuous queue triggered jobs.
