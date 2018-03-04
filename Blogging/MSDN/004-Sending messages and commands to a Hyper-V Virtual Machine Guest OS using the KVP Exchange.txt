@@ -1,0 +1,525 @@
+Part 1: Overview
+Hyper-V virtual machines regularly need to communicate bits of information back to the Hyper-V hosts. Items like the current IP address, Operating System version, guest integration components version, etc. Sometimes the Hyper-V host also needs to send messages to the VM Guest OS (like issuing a Shutdown command).
+
+Hyper-V has built in a communication channel to send these commands back and forth, and fortunately we can leverage this system to send our own messages. This communication channel occurs over the KVP (key-value-pair) Data Exchange. The channel is accessed on the Hyper-V Host side via WMI, and is accessed on the Hyper-V guest OS side via the Windows Registry. Detailed access via C# is discussed in sections 2 and 3 of this post. If you want PowerShell code for that, a quick web search should find some samples.
+
+This blog post covers the message send process through Hyper-V. It does not cover how to design your own messages, or the how to build a sender/listener service on either side. Those parts should be fairly straightforward once you understand how the sending process works.
+
+How can I use this?
+Sending messages to VMs via the Hyper-V KVP is a great way to command and control VMs you own that may not be on the same Network or Domain as the Hyper-V hosts or the rest of your infrastructure. Or for VMs that simply have no networking configured at all, but still need to communicate back to a central application.
+
+What would a message look like?
+The general idea is that you can format a message however you want (for example serialized XML), break it into chunks over KVP items, and write the message KVP items into the KVP store. You would write code for the other side that then reads the message chunks and deserializes it.
+
+What are the limitations?
+Sending messages certainly has limitations. I have never seen a documented message size limit for an individual message, but Hyper-V, WMI, and the Registry all have their own limitations for storing data in these locations that may vary by OS.
+
+An individual KVP item has a key name, and a key value. In my own crude testing procedures, I was able to write a few hundred KVP items into the store. I observed that exceeding too many KVP items in the store, or too many characters in a key value would both lead to the Hyper-V integration services complaining. If this occurs, the VM may fall into a failed state which can be fixed by removing the message items. I recommend keeping message key values under 1024 characters.
+
+Another requirement is that the data exchange service must be enabled on the Hyper-V VM for this to work. This is enabled by default in Hyper-V, but some environments may have it shut off for security reasons.
+
+Part 2: Inside the Hyper-V Host Server
+Part 2A: Prerequisites
+The sample code below uses WMI. Add a project reference to System.Management.dll, and then add a using statement for it. All of the sample code below uses the WMI root\virtualization\v2 namespace. This namespace was introduced in Windows 8 / Server 2012. If you are using Windows 7 / Server 2008 R2, you will need to use the root\virtualization namespace instead. For more information, read this.
+
+Part 2B: Sending messages to VMs
+To send a message from the Host to the VM Guest, you need to add KVP items to the store via the AddKvpItems method on the Msvm_VirtualSystemManagementService WMI class.
+Unfortunately the sample code on MSDN for this method is for adding a single KVP item. Sending large messages usually involves sending multiple KVP items at once, so here is a modified sample that sends in a collection of Key-Value pairs.
+
+        /// <summary>
+        /// Adds KVP Exchange Data items
+        /// </summary>
+        /// <param name="HyperVServerName">The Hyper-V Server hostname</param>
+        /// <param name="VirtualMachineName">Virtual Machine name as shown in Hyper-V manager</param>
+        /// <param name="VirtualMachineID">Virtual Machine unique ID as known by Hyper-V</param>
+        /// <param name="ItemsToAdd">Collection of key-value pair items to add</param>
+        public void AddKVPItems(string HyperVServerName, string VirtualMachineName, Guid VirtualMachineID, Dictionary<string, string> ItemsToAdd)
+        {
+            // check all required parameters
+            if (string.IsNullOrEmpty(HyperVServerName))
+                throw new ArgumentNullException("HyperVServerName");
+            if (string.IsNullOrEmpty(VirtualMachineName))
+                throw new ArgumentNullException("VirtualMachineName");
+            if (VirtualMachineID == Guid.Empty)
+                throw new ArgumentException("VirtualMachineID cannot be empty");
+            if (ItemsToAdd == null || ItemsToAdd.Count == 0)
+                throw new ArgumentException("ItemsToAdd cannot be null or empty");
+            // AddKvpItems() WMI Method does not allow more than 128 items in a single call. 
+            // Very large messages will need to be broken down into message groups of 128 or less.
+            if (ItemsToAdd.Count > 128)
+                throw new ArgumentException("ItemsToAdd cannot contain more than 128 items");
+            // create new scope object for the remote Hyper-V Host
+            ManagementScope scope = new ManagementScope(string.Format(@"\\{0}\root\virtualization\v2", HyperVServerName));
+            // find the Hyper-V Host Management object instance in the remote WMI
+            ManagementPath wmiPath = new ManagementPath("Msvm_VirtualSystemManagementService");
+            ManagementClass serviceClass = new ManagementClass(scope, wmiPath, null);
+            ManagementObject hostInstance = null;
+            foreach (ManagementObject item in serviceClass.GetInstances())
+            {
+                hostInstance = item;
+            }
+            if (hostInstance == null)
+                throw new Exception(string.Format("Hyper-V Host ({0}) Management Object Instance was not found in WMI.", HyperVServerName));
+            // find the Hyper-V Machine object instance in the remote WMI
+            // it must match both the display name and the ID
+            SelectQuery vmQuery = new SelectQuery(string.Format("SELECT * FROM Msvm_ComputerSystem WHERE ElementName = '{0}' AND Name = '{1}'", 
+                                VirtualMachineName, VirtualMachineID));
+            ManagementObjectSearcher vmSearcher = new ManagementObjectSearcher(scope, vmQuery);
+            ManagementObject vmInstance = null;
+            foreach (ManagementObject item in vmSearcher.Get())
+            {
+                vmInstance = item;
+            }
+            if (vmInstance == null)
+                throw new Exception(string.Format("Virtual Machine ({0}, {1}) WMI instance was not found on the Hyper-V Host {2}.", 
+                            VirtualMachineID, VirtualMachineName, HyperVServerName));
+            // prepare objects for method execution.
+            // get the method parameters for AddKvpItems()
+            // populate the kvpItems array with new instances of Msvm_KvpExchangeDataItem
+            ManagementClass kvpClass = new ManagementClass(scope, new ManagementPath("Msvm_KvpExchangeDataItem"), null);
+            ManagementBaseObject kvpParams = hostInstance.GetMethodParameters("AddKvpItems");
+            string[] kvpItems = new string[ItemsToAdd.Count];
+            int arrayCounter = 0;
+            foreach (KeyValuePair<string, string> kvpItem in ItemsToAdd)
+            {
+                // create a new instance of a KVP Exchange data item
+                // for each item that needs to be added
+                ManagementObject kvpInstance = kvpClass.CreateInstance();
+                kvpInstance.Properties["Name"].Value = kvpItem.Key;
+                kvpInstance.Properties["Data"].Value = kvpItem.Value;
+                kvpInstance.Properties["Source"].Value = 0;
+                // save this new instance back to the items array
+                // text must be formatted first
+                kvpItems[arrayCounter] = kvpInstance.GetText(TextFormat.CimDtd20);
+                arrayCounter++;
+            }
+            // finalize parameters and invoke the WMI method
+            kvpParams["TargetSystem"] = vmInstance.Path.Path;
+            kvpParams["DataItems"] = kvpItems;
+            ManagementBaseObject outParams = hostInstance.InvokeMethod("AddKvpItems", kvpParams, null);
+            if ((UInt32)outParams["ReturnValue"] == WMIReturnCode.Started)
+            {
+                // the Job has started, but not finished yet.
+                // grab an instance of the WMI Job object and wait until the Job is completed or failed.
+                ManagementObject Job = new ManagementObject(scope, new ManagementPath((string)outParams["Job"]), null);
+                if (Job == null)
+                    throw new Exception("WMI Job has successfully started, but we were unable to locate the WMI Job object instance.");
+                if (JobCompleted(Job) == false)
+                {
+                    throw new Exception(string.Format("WMI Job failed with error: {0}, {1}", Job["ErrorCode"], Job["ErrorDescription"]));
+                }
+            }
+            else if ((UInt32)outParams["ReturnValue"] == WMIReturnCode.Completed)
+            {
+                // Job has completed successfully.
+            }
+            else
+            {
+                throw new Exception(string.Format("WMI Job failed to start with error: {0}", outParams["ReturnValue"]));
+            }
+            if (kvpParams != null)
+            {
+                kvpParams.Dispose();
+            }
+            if (outParams != null)
+            {
+                outParams.Dispose();
+            }
+        }
+
+Part 2C: Reading messages written by VMs
+To read a message written by a VM, we grab the instance of the Virtual Machine WMI object (Msvm_ComputerSystem), and then use a related object query to pull the KVP items in the GuestInstrinsicExchangeItems property on Msvm_KvpExchangeComponent.
+
+        /// <summary>
+        /// Gets KVP Exchange Data items that were added from inside a VM
+        /// </summary>
+        /// <param name="HyperVServerName">The Hyper-V Server hostname</param>
+        /// <param name="VirtualMachineName">Virtual Machine name as shown in Hyper-V manager</param>
+        /// <param name="VirtualMachineID">Virtual Machine unique ID as known by Hyper-V</param>
+        /// <returns>Collection of KVP Exchange data items</returns>
+        public Dictionary<string, string> GetVMAddedKVPItems(string HyperVServerName, string VirtualMachineName, Guid VirtualMachineID)
+        {
+            // check all required parameters
+            if (string.IsNullOrEmpty(HyperVServerName))
+                throw new ArgumentNullException("HyperVServerName");
+            if (string.IsNullOrEmpty(VirtualMachineName))
+                throw new ArgumentNullException("VirtualMachineName");
+            if (VirtualMachineID == Guid.Empty)
+                throw new ArgumentException("VirtualMachineID cannot be empty");
+            // create new scope object for the remote Hyper-V Host
+            ManagementScope scope = new ManagementScope(string.Format(@"\\{0}\root\virtualization\v2", HyperVServerName));
+            // find the Hyper-V Machine object instance in the remote WMI
+            // it must match both the display name and the ID
+            SelectQuery vmQuery = new SelectQuery(string.Format("SELECT * FROM Msvm_ComputerSystem WHERE ElementName = '{0}' AND Name = '{1}'", 
+                                VirtualMachineName, VirtualMachineID));
+            ManagementObjectSearcher vmSearcher = new ManagementObjectSearcher(scope, vmQuery);
+            ManagementObject vmInstance = null;
+            foreach (ManagementObject item in vmSearcher.Get())
+            {
+                vmInstance = item;
+            }
+            if (vmInstance == null)
+                throw new Exception(string.Format("Virtual Machine ({0}, {1}) WMI instance was not found on the Hyper-V Host {2}.", 
+                            VirtualMachineID, VirtualMachineName, HyperVServerName));
+            // kvp exchange data items are found via the related object query
+            RelatedObjectQuery kvpQuery = new RelatedObjectQuery("Associators of {" + vmInstance.ToString() + 
+                            "} Where AssocClass=Msvm_SystemDevice ResultClass=Msvm_KvpExchangeComponent");
+            ManagementObjectSearcher kvpSearcher = new ManagementObjectSearcher(scope, kvpQuery);
+            ManagementObject kvpCollectionInstance = null;
+            foreach (ManagementObject item in kvpSearcher.Get())
+            {
+                kvpCollectionInstance = item;
+            }
+            if (kvpCollectionInstance == null)
+                throw new Exception(string.Format("Virtual Machine ({0}, {1}) KVPExchangeComponent items were not found.", 
+                            VirtualMachineID, VirtualMachineName));
+            // translate the raw KVP Items into a results collection and return
+            string[] kvp = kvpCollectionInstance.Properties["GuestIntrinsicExchangeItems"].Value as string[];
+            return TranslateKVPDataItems(kvp);
+        }
+
+Part 2D: Reading messages written by Host
+To read a message written by the Hyper-V Host, we grab the instance of the Virtual Machine WMI object (Msvm_ComputerSystem), and then use a related object query to pull the KVP items in the HostExchangeItems property on Msvm_KvpExchangeComponentSettingData. Note this is not the same class as used in step 2C.
+
+        /// <summary>
+        /// Gets KVP Exchange Data items that were added from the Hyper-V Host
+        /// </summary>
+        /// <param name="HyperVServerName">The Hyper-V Server hostname</param>
+        /// <param name="VirtualMachineName">Virtual Machine name as shown in Hyper-V manager</param>
+        /// <param name="VirtualMachineID">Virtual Machine unique ID as known by Hyper-V</param>
+        /// <returns>Collection of KVP Exchange data items</returns>
+        public Dictionary<string, string> GetHostAddedKVPItems(string HyperVServerName, string VirtualMachineName, Guid VirtualMachineID)
+        {
+            // check all required parameters
+            if (string.IsNullOrEmpty(HyperVServerName))
+                throw new ArgumentNullException("HyperVServerName");
+            if (string.IsNullOrEmpty(VirtualMachineName))
+                throw new ArgumentNullException("VirtualMachineName");
+            if (VirtualMachineID == Guid.Empty)
+                throw new ArgumentException("VirtualMachineID cannot be empty");
+            // create new scope object for the remote Hyper-V Host
+            ManagementScope scope = new ManagementScope(string.Format(@"\\{0}\root\virtualization\v2", HyperVServerName));
+            // find the Hyper-V Machine object instance in the remote WMI
+            // it must match both the display name and the ID
+            SelectQuery vmQuery = new SelectQuery(string.Format("SELECT * FROM Msvm_ComputerSystem WHERE ElementName = '{0}' AND Name = '{1}'", 
+                                VirtualMachineName, VirtualMachineID));
+            ManagementObjectSearcher vmSearcher = new ManagementObjectSearcher(scope, vmQuery);
+            ManagementObject vmInstance = null;
+            foreach (ManagementObject item in vmSearcher.Get())
+            {
+                vmInstance = item;
+            }
+            if (vmInstance == null)
+                throw new Exception(string.Format("Virtual Machine ({0}, {1}) WMI instance was not found on the Hyper-V Host {2}.", 
+                            VirtualMachineID, VirtualMachineName, HyperVServerName));
+            // find the related KVP Component
+            ManagementObject kvpExchangeComponent = null;
+            foreach (ManagementObject item in vmInstance.GetRelated("Msvm_KvpExchangeComponent"))
+            {
+                kvpExchangeComponent = item;
+                break; // grab the first item and break
+            }
+            if (kvpExchangeComponent == null)
+                throw new Exception(string.Format("Virtual Machine ({0}, {1}) KVPExchangeComponent Host item was not found.", 
+                        VirtualMachineID, VirtualMachineName));
+            ManagementObject kvpExchangeComponentSettingData = null;
+            foreach (ManagementObject item in kvpExchangeComponent.GetRelated("Msvm_KvpExchangeComponentSettingData"))
+            {
+                kvpExchangeComponentSettingData = item;
+                break; // grab the first item and break
+            }
+            if (kvpExchangeComponentSettingData == null)
+                throw new Exception(string.Format("Virtual Machine ({0}, {1}) KVPExchangeComponentSettingData Host item was not found.", 
+                            VirtualMachineID, VirtualMachineName));
+            // translate the raw KVP Items into a results collection and return
+            string[] xmlItems = kvpExchangeComponentSettingData.Properties["HostExchangeItems"].Value as string[];
+            return TranslateKVPDataItems(xmlItems);
+        }
+
+Part 2E: Removing messages
+To remove messages from the KVP Store via WMI on the Host, we need to call the RemoveKvpItems method on the Msvm_VirtualSystemManagementService WMI class.
+Just like AddKvpItems, the sample code on MSDN is only for removing a single KVP item. The following is a modified example for removing a group of items.
+
+        /// <summary>
+        /// Removes KVP Exchange Data items
+        /// </summary>
+        /// <param name="HyperVServerName">The Hyper-V Server hostname</param>
+        /// <param name="VirtualMachineName">Virtual Machine name as shown in Hyper-V manager</param>
+        /// <param name="VirtualMachineID">Virtual Machine unique ID as known by Hyper-V</param>
+        /// <param name="ItemsToRemove">Array of item key names to remove</param>
+        public void RemoveKVPItems(string HyperVServerName, string VirtualMachineName, Guid VirtualMachineID, string[] ItemsToRemove)
+        {
+            // check all required parameters
+            if (string.IsNullOrEmpty(HyperVServerName))
+                throw new ArgumentNullException("HyperVServerName");
+            if (string.IsNullOrEmpty(VirtualMachineName))
+                throw new ArgumentNullException("VirtualMachineName");
+            if (VirtualMachineID == Guid.Empty)
+                throw new ArgumentException("VirtualMachineID cannot be empty");
+            if (ItemsToRemove == null || ItemsToRemove.Length == 0)
+                throw new ArgumentException("ItemsToRemove cannot be null or empty");
+            // RemoveKvpItems() WMI Method does not allow more than 128 items in a single call. 
+            // Very large messages will need to be broken down into message groups of 128 or less.
+            if (ItemsToRemove.Length > 128)
+                throw new ArgumentException("ItemsToRemove cannot contain more than 128 items");
+            // create new scope object for the remote Hyper-V Host
+            ManagementScope scope = new ManagementScope(string.Format(@"\\{0}\root\virtualization\v2", HyperVServerName));
+            // find the Hyper-V Host Management object instance in the remote WMI
+            ManagementPath wmiPath = new ManagementPath("Msvm_VirtualSystemManagementService");
+            ManagementClass serviceClass = new ManagementClass(scope, wmiPath, null);
+            ManagementObject hostInstance = null;
+            foreach (ManagementObject item in serviceClass.GetInstances())
+            {
+                hostInstance = item;
+            }
+            if (hostInstance == null)
+                throw new Exception(string.Format("Hyper-V Host ({0}) Management Object Instance was not found in WMI.", HyperVServerName));
+            // find the Hyper-V Machine object instance in the remote WMI
+            // it must match both the display name and the ID
+            SelectQuery vmQuery = new SelectQuery(string.Format("SELECT * FROM Msvm_ComputerSystem WHERE ElementName = '{0}' AND Name = '{1}'", 
+                                VirtualMachineName, VirtualMachineID));
+            ManagementObjectSearcher vmSearcher = new ManagementObjectSearcher(scope, vmQuery);
+            ManagementObject vmInstance = null;
+            foreach (ManagementObject item in vmSearcher.Get())
+            {
+                vmInstance = item;
+            }
+            if (vmInstance == null)
+                throw new Exception(string.Format("Virtual Machine ({0}, {1}) WMI instance was not found on the Hyper-V Host {2}.", 
+                        VirtualMachineID, VirtualMachineName, HyperVServerName));
+            // prepare objects for method execution
+            // get the method parameters for RemoveKvpItems()
+            // populate the kvpItems array with new instances of Msvm_KvpExchangeDataItem
+            ManagementClass kvpClass = new ManagementClass(scope, new ManagementPath("Msvm_KvpExchangeDataItem"), null);
+            ManagementBaseObject kvpParams = hostInstance.GetMethodParameters("RemoveKvpItems");
+            string[] kvpItems = new string[ItemsToRemove.Length];
+            for (int i = 0; i < ItemsToRemove.Length; i++)
+            {
+                // create a new instance of a KVP Exchange data item
+                // for each item that needs to be removed
+                ManagementObject kvpInstance = kvpClass.CreateInstance();
+                kvpInstance.Properties["Name"].Value = ItemsToRemove[i];
+                kvpInstance.Properties["Data"].Value = string.Empty; // pass string empty, since only the Item Name needs to match
+                kvpInstance.Properties["Source"].Value = 0;
+                // save this new instance back to the items array
+                // text must be formatted first
+                kvpItems[i] = kvpInstance.GetText(TextFormat.CimDtd20);
+            }
+            // finalize parameters and invoke the WMI method
+            kvpParams["TargetSystem"] = vmInstance.Path.Path;
+            kvpParams["DataItems"] = kvpItems;
+            ManagementBaseObject outParams = hostInstance.InvokeMethod("RemoveKvpItems", kvpParams, null);
+            if ((UInt32)outParams["ReturnValue"] == WMIReturnCode.Started)
+            {
+                // the Job has started, but not finished yet.
+                // grab an instance of the WMI Job object and wait until the Job is completed or failed.
+                ManagementObject Job = new ManagementObject(scope, new ManagementPath((string)outParams["Job"]), null);
+                if (Job == null)
+                    throw new Exception("WMI Job has successfully started, but we were unable to locate the WMI Job object instance.");
+                if (JobCompleted(Job) == false)
+                {
+                    throw new Exception(string.Format("WMI Job failed with error: {0}, {1}", Job["ErrorCode"], Job["ErrorDescription"]));
+                }
+            }
+            else if ((UInt32)outParams["ReturnValue"] == WMIReturnCode.Completed)
+            {
+                // Job has completed successfully.
+            }
+            else
+            {
+                throw new Exception(string.Format("WMI Job failed to start with error: {0}", outParams["ReturnValue"]));
+            }
+            if (kvpParams != null)
+            {
+                kvpParams.Dispose();
+            }
+        
+            if (outParams != null)
+            {
+                outParams.Dispose();
+            }
+        }
+
+Part 2F: Helper classes
+The code samples above use the following helper classes.
+
+        /// <summary>
+        /// Translates raw KVP Exchange Data item XML nodes into a results collection
+        /// </summary>
+        /// <remarks>
+        /// The kvp data items returned from WMI are a blob of XML that can be translated into a collection of usable key-value pairs.
+        /// </remarks>
+        /// <param name="kvpXmlNodes">Array of KVP Exchange Data items</param>
+        /// <returns>Collection of key-value pair items</returns>
+        private Dictionary<string, string> TranslateKVPDataItems(string[] kvpXmlNodes)
+        {
+            if (kvpXmlNodes == null)
+                throw new ArgumentNullException("kvpXmlNodes");
+            Dictionary<string, string> KVPItems = new Dictionary<string, string>();
+            foreach (string xmlString in kvpXmlNodes)
+            {
+                // each string contains an XML document with XmlElements
+                // load the XML string into a Document object for processing
+                XmlDocument d = new XmlDocument();
+                d.LoadXml(xmlString);
+                string Name = null;
+                string Value = null;
+                foreach (XmlElement property in d.SelectNodes("/INSTANCE/PROPERTY"))
+                {
+                    if (string.IsNullOrEmpty(property.InnerText) == false)
+                    {
+                        // this element has data in it (InnerText not null)
+                        // look at the attributes for this element to find out if this is the Name or the Value portion of the KVP item
+                        foreach (XmlAttribute attrib in property.Attributes)
+                        {
+                            if (attrib.Value == "Name")
+                            {
+                                Name = property.InnerText;
+                            }
+                            if (attrib.Value == "Data")
+                            {
+                                Value = property.InnerText;
+                            }
+                        }
+                    }
+                }
+                if (string.IsNullOrEmpty(Name) == false && string.IsNullOrEmpty(Value) == false && KVPItems.ContainsKey(Name) == false)
+                {
+                    // Found a KVP item that has Name and Value fields populated
+                    // Also it does not already exist in the results collection
+                    KVPItems.Add(Name, Value);
+                }
+            }
+            return KVPItems;
+        }
+
+        /// <summary>
+        /// Waits until a WMI Job is completed
+        /// </summary>
+        /// <param name="Job">WMI Job object</param>
+        /// <returns>True if Job success, False if Job failure</returns>
+        private bool JobCompleted(ManagementObject Job)
+        {
+            // Capture latest Job status
+            Job.Get();
+            // Is the job still in progress or starting?
+            // If yes, then sleep and check job status again until completed.
+            while ((UInt16)Job["JobState"] == WMIJobState.Starting || (UInt16)Job["JobState"] == WMIJobState.Running)
+            {
+                System.Threading.Thread.Sleep(500);
+                Job.Get();
+            }
+            // return the success/failure of the job
+            UInt16 jobState = (UInt16)Job["JobState"];
+            if (jobState != WMIJobState.Completed)
+            {
+                return false;
+            }
+            else
+            {
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// WMI Job State class enumeration
+        /// </summary>
+        public static class WMIJobState
+        {
+            public const UInt16 New = 2;
+            public const UInt16 Starting = 3;
+            public const UInt16 Running = 4;
+            public const UInt16 Suspended = 5;
+            public const UInt16 ShuttingDown = 6;
+            public const UInt16 Completed = 7;
+            public const UInt16 Terminated = 8;
+            public const UInt16 Killed = 9;
+            public const UInt16 Exception = 10;
+            public const UInt16 Service = 11;
+        }
+        
+        /// <summary>
+        /// WMI Method Invoke return code class enumeration
+        /// </summary>
+        public static class WMIReturnCode
+        {
+            public const UInt32 Completed = 0;
+            public const UInt32 Started = 4096;
+            public const UInt32 Failed = 32768;
+            public const UInt32 AccessDenied = 32769;
+            public const UInt32 NotSupported = 32770;
+            public const UInt32 Unknown = 32771;
+            public const UInt32 Timeout = 32772;
+            public const UInt32 InvalidParameter = 32773;
+            public const UInt32 SystemInUse = 32774;
+            public const UInt32 InvalidState = 32775;
+            public const UInt32 IncorrectDataType = 32776;
+            public const UInt32 SystemNotAvailable = 32777;
+            public const UInt32 OutofMemory = 32778;
+        }
+
+Part 3: Inside the Guest VM Operating System
+Part 3A: Sending
+Writing messages back to the host is as simple as writing to the registry. Inside the Hyper-V Guest OS, the registry key “HKLM\SOFTWARE\Microsoft\Virtual Machine\Auto” stores the messages to be read by the Hyper-V Host. Write the keys and values as new string value entries.
+
+You can see that this location already hosts several key/values that Hyper-V uses internally to communicate OS information back to the Host. This registry key location should always exist on Hyper-V guest operating systems, assuming that they have integration services components installed.
+
+        /// <summary>
+        /// Registry key location for the Guest outgoing KVP Items.
+        /// </summary>
+        private const string KVPOutgoingRegistryKey = @"SOFTWARE\Microsoft\Virtual Machine\Auto";
+        /// <summary>
+        /// Writes outgoing KVP messages to the registry.
+        /// </summary>
+        /// <param name="ItemsToAdd">Collection of items to add</param>
+        public void SendGuestKVPItems(Dictionary<string, string> ItemsToAdd)
+        {
+            if (ItemsToAdd == null || ItemsToAdd.Count == 0)
+                throw new ArgumentNullException("ItemsToAdd");
+            foreach (var item in ItemsToAdd)
+            {
+                // write the value to the registry
+                Registry.SetValue("HKEY_LOCAL_MACHINE\\" + KVPOutgoingRegistryKey, item.Key, item.Value);
+            }
+        }
+
+Part 3B: Receiving
+Reading messages sent from the Host to the VM is similar to step 3A in that it involves the registry. We just open and read the registry key “HKLM\SOFTWARE\Microsoft\Virtual Machine\External”. Inside this location will be any key-value pair items that were written from the Host and floated down to the VM. Simply read the message items, and reconstruct the message or instruction in your desired format.
+
+Unless you have been sending messages, this key is usually empty:
+
+        /// <summary>
+        /// Registry key location for the Guest incoming KVP Items.
+        /// </summary>
+        private const string KVPIncomingRegistryKey = @"SOFTWARE\Microsoft\Virtual Machine\External";
+        /// <summary>
+        /// Reads the Host KVP Data Exchanges items.
+        /// </summary>
+        /// <returns>Collection of key/value pairs.</returns>
+        public Dictionary<string, string> ReadHostKVPItems()
+        {
+            Dictionary<string, string> KvpItems = new Dictionary<string, string>();
+            using (RegistryKey HostKey = Registry.LocalMachine.OpenSubKey(KVPIncomingRegistryKey))
+            {
+                if (HostKey == null)
+                {
+                    // this would indicate the host registry key doesn't exist.
+                    // the only time this should happen is on a machine that isn't a hyper-v VM
+                    // or we don't have access to open the key.
+                    throw new Exception("Host KVP Registry key not found.");
+                }
+                // read the key value names
+                string[] ValueNames = HostKey.GetValueNames();
+                if (ValueNames.Length == 0)
+                    return KvpItems; // no items found!
+                foreach (string keyValueName in ValueNames)
+                {
+                    // capture the value as a string
+                    // returns string empty if the key value is null.
+                    string keyValue = Registry.GetValue("HKEY_LOCAL_MACHINE\\" + KVPIncomingRegistryKey, keyValueName, string.Empty) as string;
+                    // add to the collection.
+                    KvpItems.Add(keyValueName, keyValue);
+                }
+            }
+            return KvpItems;
+        }
