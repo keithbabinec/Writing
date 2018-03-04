@@ -1,0 +1,232 @@
+Today's post (and this blog's inaugural post!) is An Introduction to Error Handling in PowerShell. We will discuss error types, the $error variable, error action preferences, try/catch blocks, and $lastexitcode.
+
+The first requirement is to understand the types of errors that can occur during execution.
+
+Terminating vs. Non-Terminating Errors:
+
+Terminating Error: A serious error during execution that halts the command (or script execution) completely. Examples can include non-existent cmdlets, syntax errors that would prevent a cmdlet from running, or other fatal errors.
+Non-Terminating Error: A non-serious error that allows execution to continue despite the failure. Examples include operational errors such file not found, permissions problems, etc.
+Update 12/13/2013: Writing a cmdlet? For further information regarding how a cmdlet should determine when to throw a terminating error or non-terminating error, MSDN has a nice explanation here.
+
+Update 12/13/2013: Want to know if an error you encountered is terminating or non-terminating? Check to see if the error behavior is affected by changing the $ErrorActionPreference. According to the MSDN documentation here, "Neither $ErrorActionPreference nor the ErrorAction common parameter affect how Windows PowerShell responds to terminating errors (those that stop cmdlet processing).".
+
+The $error variable:
+
+When either type of error occurs during execution, it is logged to a global variable called $error. This variable is a collection of PowerShell Error Objects with the most recent error at index 0. On a freshly initialized PowerShell instance (no errors have occurred yet) the $error variable is ready and waiting as an empty collection: 
+
+        PS C:\> $error.GetType()
+        
+        IsPublic IsSerial Name                                     BaseType
+        -------- -------- ----                                     --------
+        True     True     ArrayList                                System.Object
+        
+        PS C:\> $error.Count
+        0
+
+In the next snippet I have executed a cmdlet that doesn’t exist, throwing an error. If we grab the count on $error, you will notice it has increased to one item. Dumping that object to the pipeline by accessing $error[0] just prints the error we already saw, right back at us.
+
+        PS C:\> ThisCmdlet-DoesNotExist
+        The term 'ThisCmdlet-DoesNotExist' is not recognized as the name of a cmdlet, f
+        unction, script file, or operable program. Check the spelling of the name, or i
+        f a path was included, verify that the path is correct and try again.
+        At line:1 char:24
+        + ThisCmdlet-DoesNotExist <<<<
+            + CategoryInfo          : ObjectNotFound: (ThisCmdlet-DoesNotExist:String)
+            [], CommandNotFoundException
+            + FullyQualifiedErrorId : CommandNotFoundException
+        
+        PS C:\> $error.Count
+        1
+        PS C:\> $error[0]
+        The term 'ThisCmdlet-DoesNotExist' is not recognized as the name of a cmdlet, f
+        unction, script file, or operable program. Check the spelling of the name, or i
+        f a path was included, verify that the path is correct and try again.
+        At line:1 char:24
+        + ThisCmdlet-DoesNotExist <<<<
+            + CategoryInfo          : ObjectNotFound: (ThisCmdlet-DoesNotExist:String)
+            [], CommandNotFoundException
+            + FullyQualifiedErrorId : CommandNotFoundException
+
+There is more available to us than just what is immediately visible. The ErrorRecord is a rich object that contains many useful properties to explore. Try piping the error to get-member (aliased by gm) to see what options we have available to us:
+
+        PS C:\> $error[0] | gm
+        
+        TypeName: System.Management.Automation.ErrorRecord
+        
+        Name                  MemberType     Definition
+        ----                  ----------     ----------
+        Equals                Method         bool Equals(System.Object obj)
+        GetHashCode           Method         int GetHashCode()
+        GetObjectData         Method         System.Void GetObjectData(System.Runtim...
+        GetType               Method         type GetType()
+        ToString              Method         string ToString()
+        CategoryInfo          Property       System.Management.Automation.ErrorCateg...
+        ErrorDetails          Property       System.Management.Automation.ErrorDetai...
+        Exception             Property       System.Exception Exception {get;}
+        FullyQualifiedErrorId Property       System.String FullyQualifiedErrorId {get;}
+        InvocationInfo        Property       System.Management.Automation.Invocation...
+        PipelineIterationInfo Property       System.Collections.ObjectModel.ReadOnly...
+        TargetObject          Property       System.Object TargetObject {get;}
+        PSMessageDetails      ScriptProperty System.Object PSMessageDetails {get=& {...
+
+For details on what each property member provides, visit the ErrorRecord MSDN documentation. A couple important highlights:
+
+$error[0].InvocationInfo provides details about the context which the command was executed, if available.
+$error[0].Exception contains the original exception object as it was thrown to PowerShell. If we explore that object (also piped to get-member) we can see important items to pull up like stack trace, source, HResult, InnerException, etc.
+
+Diving into the exception object itself ($error[0].Exception) can provide very important diagnostic details not immediately visible on the top level error record. This is especially useful in troubleshooting third party cmdlets!
+
+        PS C:\> $error[0].Exception
+        The term 'ThisCmdlet-DoesNotExist' is not recognized as the name of a cmdlet, f
+        unction, script file, or operable program. Check the spelling of the name, or i
+        f a path was included, verify that the path is correct and try again.
+        
+        PS C:\> $error[0].Exception | gm
+        
+        TypeName: System.Management.Automation.CommandNotFoundException
+        
+        Name                        MemberType Definition
+        ----                        ---------- ----------
+        Equals                      Method     bool Equals(System.Object obj)
+        GetBaseException            Method     System.Exception GetBaseException()
+        GetHashCode                 Method     int GetHashCode()
+        GetObjectData               Method     System.Void GetObjectData(System.Runt...
+        GetType                     Method     type GetType()
+        ToString                    Method     string ToString()
+        CommandName                 Property   System.String CommandName {get;set;}
+        Data                        Property   System.Collections.IDictionary Data {...
+        ErrorRecord                 Property   System.Management.Automation.ErrorRec...
+        HelpLink                    Property   System.String HelpLink {get;set;}
+        InnerException              Property   System.Exception InnerException {get;}
+        Message                     Property   System.String Message {get;}
+        Source                      Property   System.String Source {get;set;}
+        StackTrace                  Property   System.String StackTrace {get;}
+        TargetSite                  Property   System.Reflection.MethodBase TargetSi...
+        WasThrownFromThrowStatement Property   System.Boolean WasThrownFromThrowStat...
+        
+        PS C:\> $error[0].Exception.StackTrace
+        at System.Management.Automation.CommandDiscovery.LookupCommandInfo(String co
+        mmandName, CommandOrigin commandOrigin)
+        at System.Management.Automation.CommandDiscovery.LookupCommandProcessor(Stri
+        ng commandName, CommandOrigin commandOrigin, Nullable`1 useLocalScope)
+        at System.Management.Automation.ExecutionContext.CreateCommand(String comman
+        d)
+        at System.Management.Automation.CommandNode.CreateCommandProcessor(Int32& in
+        dex, ExecutionContext context)
+        at System.Management.Automation.CommandNode.AddToPipeline(PipelineProcessor
+        pipeline, ExecutionContext context)
+        at System.Management.Automation.PipelineNode.Execute(Array input, Pipe outpu
+        tPipe, ArrayList& resultList, ExecutionContext context)
+        at System.Management.Automation.StatementListNode.ExecuteStatement(ParseTree
+        Node statement, Array input, Pipe outputPipe, ArrayList& resultList, ExecutionC
+        ontext context)
+
+Error Action Preference:
+
+PowerShell halts execution on terminating errors, as mentioned before. For non-terminating errors we have the option to tell PowerShell how to handle these situations. This is where the error action preference comes in. Error Action Preference allows us to specify the desired behavior for a non-terminating error; it can be scoped at the command level or all the way up to the script level.
+
+Available choices for error action preference:
+
+    SilentlyContinue – error messages are suppressed and execution continues.
+    Stop – forces execution to stop, behaving like a terminating error.
+    Continue - the default option. Errors will display and execution will continue.
+    Inquire – prompt the user for input to see if we should proceed.
+    Ignore – (new in v3) – the error is ignored and not logged to the error stream. Has very restricted usage scenarios.
+
+Example: Set the preference at the script scope to Stop, place the following near the top of the script file:
+
+        $ErrorActionPreference = "Stop"
+
+Example: Set the preference at the cmdlet level to Inquire, add error action switch (or alias EA): 
+
+        get-childitem "G:\FakeFolder" -ErrorAction "Inquire"
+        get-childitem "G:\FakeFolder" -ea "Inquire"
+
+Try/Catch/Finally Blocks:
+
+The Try, Catch, and Finally statements allow us to control script flow when we encounter errors. The statements behave similar to the statements of the same name found in C# and other languages.
+
+The behavior of try/catch is to catch terminating errors (exceptions). This means Non-terminating (operational) errors inside a try block will not trigger a Catch*. If you would like to catch all possible errors (terminating and non-terminating) – then simply set the error action preference to Stop. Remember that Stop error action forces a non-terminating error to behave like a terminating error, which means it can then be trapped in a catch block. Here is an example:
+
+*Update 12/13/2013: In almost all cases, non-terminating errors will not trigger a catch. However I did recently observe a situation where a non-terminating error did trigger a catch block. It wasn't from a cmdlet, but an exception generated from directly calling a method on a .net object. So keep in mind that behavior might be possible.
+
+        try
+        {
+            <#
+                Add dangerous code here that might produce exceptions.
+                Place as many code statements as needed here.
+                Non-terminating errors must have error action preference set to Stop to be caught.
+            #>
+        
+            write-host "Attempting dangerous operation"
+            $content = get-content -Path "C:\SomeFolder\This_File_Might_Not_Exist.txt" -ErrorAction Stop
+        }
+        catch
+        {
+            <#
+                You can have multiple catch blocks (for different exceptions), or one single catch.
+                The last error record is available inside the catch block under the $_ variable.
+                Code inside this block is used for error handling. Examples include logging an error,
+                sending an email, writing to the event log, performing a recovery action, etc.
+                In this example I'm just printing the exception type and message to the screen.
+            #>
+        
+            write-host "Caught an exception:" -ForegroundColor Red
+            write-host "Exception Type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
+            write-host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red
+        }
+        finally
+        {
+            <#
+                Any statements in this block will always run even if errors are caught.
+                This statement block is optional. Normally used for cleanup and
+                releasing resources that must happen even under error situations.
+            #>
+        
+            write-host "Finally block reached"
+        }
+
+You can also have Catch blocks that will only trap specific exceptions. The reason for doing this is so you can add different handlers for each possible failure condition that you may encounter. Some exceptions you may just want to log and exit, but others you may have a recovery action for. Here is a Catch statement that would trap a specific Exception type. The Exception type is displayed in brackets after the catch statement:
+
+        catch [System.Management.Automation.ItemNotFoundException]
+        {
+            # catching specific exceptions allows you to have
+            # custom actions for different types of errors
+            write-host "Caught an ItemNotFoundException" -ForegroundColor Red
+        }
+
+You might be wondering how I found the type name for the previous exception. The possible exceptions for cmdlets are not usually documented, so you may need to find them on your own. When an exception occurs you can look up the error in the $error collection, or while inside a catch block under the $_ variable. Call the GetType() method on the base exception to extract the FullName property. Like shown here:
+
+        PS C:\> $error[0].Exception.GetType().FullName
+        System.Management.Automation.ItemNotFoundException
+
+Handling Errors from non-PowerShell processes:
+
+What happens when your script needs to run an external process from PowerShell and you want to know if it succeeded? An example would be a cmdline tool such as robocopy.exe. It’s an external application that returns an exit code upon completion. But since it is an external process, its errors will not be caught in your try/catch blocks.
+
+To trap this exit code utilize the $LastExitCode PowerShell variable.
+
+When the launched process exits, PowerShell will write the exit code directly to $LastExitCode. In most cases an exit code of 0 means success, and 1 or greater indicates a failure. Check the external tool's documentation to verify of course.
+
+Here it is seen in action:
+
+        PS C:\> robocopy.exe "C:\DirectoryDoesNotExist" "C:\NewDestination" "*.*" /R:0
+        
+        -------------------------------------------------------------------------------
+        ROBOCOPY     ::     Robust File Copy for Windows
+        
+        -------------------------------------------------------------------------------
+        
+        Started : Sun Jun 09 18:42:09 2013
+        
+        Source : C:\DirectoryDoesNotExist\\par      Dest : C:\NewDestination\\par
+            Files : *.*
+        
+        Options : *.* /COPY:DAT /R:0 /W:30
+        
+        ------------------------------------------------------------------------------
+        
+        2013/06/09 18:42:09 ERROR 2 (0x00000002) Accessing Source Directory C:\Directory
+        DoesNotExist\\par The system cannot find the file specified.
+        PS C:\> $lastexitcode
+        16
