@@ -1,0 +1,176 @@
+<h3>Application Settings</h3>
+.NET developers should be familiar with the classic web.config file used for storing web site options, application settings, and connection strings. When you deploy a .NET Web Application to Azure this file can still be used, however a new additional settings layer in Azure is provided.
+
+Azure Web Applications have access to an additional key/value settings store which is stored in the Azure Web Site Configuration Database (in Azure infrastructure; not your code/config files). The settings are exposed as environment variables to the web server. This means that you can access the settings through non .NET web sites too. For example sites using PHP or Node will have them as well. For more on how it works, check out <a href="https://azure.microsoft.com/en-us/blog/windows-azure-web-sites-how-application-strings-and-connection-strings-work/">this article</a>.
+<h3>Web.config file vs Azure Application Settings</h3>
+The web.config file is stored as plain text and most people keep this file directly in their ASP.NET project source control. Controlling different web.config settings for multiple environments also introduces its own headaches.
+
+My recommended approach is to keep only the settings common to all environments/deployments in that web.config file and to not store secrets in the file. Secrets would refer to things like passwords, connection strings, and API keys. Use the Azure Web Application settings store to save environment specific configuration values and secrets.
+
+You can leverage PowerShell to deploy application settings and secrets as a separate step of the CI/CD pipeline. This keeps a bit of separation between the generic configuration file checked into source control and the destination environment specific values and secrets (which can be locked down or maintained by Operations teams).
+<h3>PowerShell cmdlets for Web Application Settings</h3>
+You will need to have the Azure PowerShell module installed and understand how to connect to your Azure resources. <a href="http://keithbabinec.com/2017/04/23/azure-powershell-cmdlets-and-connectivity-basics/">This article</a> covers that.
+
+There are three core cmdlets to work with. Use them in the following ways:
+<ol>
+	<li><a href="https://docs.microsoft.com/en-us/powershell/module/azurerm.websites/set-azurermwebapp">Set-AzureRmWebApp</a> to save a collection of app settings to the site root.</li>
+	<li><a href="https://docs.microsoft.com/en-us/powershell/module/azurerm.websites/set-azurermwebappslot">Set-AzureRmWebAppSlot</a> to save a collection of app settings to a specific <a href="http://keithbabinec.com/2017/04/25/how-to-automate-azure-app-service-deployment-slots-for-dev-staging-environments/">deployment slot</a>.</li>
+	<li><a href="https://docs.microsoft.com/en-us/powershell/module/azurerm.websites/set-azurermwebappslotconfigname">Set-AzureRmWebAppSlotConfigName</a> to tell Azure which settings should be 'slot settings' vs 'shared', assuming you are using deployment slots.</li>
+</ol>
+Most CI/CD deployment scenarios will use these cmdlets to apply the known application settings and values to the web application and deployment slots. Azure expects you to apply the entire settings collection for the app/slot each time, which is a valid approach in most scenarios.
+
+However you might also find yourself in a situation where you need to add or update a single setting. There are no Azure cmdlets for that, so I wrote a function that performs this action below. It is essentially a wrapper around the above cmdlets, so you don't have to worry about clobbering existing settings.
+<h3>Set-AzureWebAppSlotSetting</h3>
+Usage:
+
+[code language="powershell"]
+Set-AzureWebAppSlotSetting -WebAppName "MyWebApp" -WebAppRgName "MyResourceGroup" -WebAppSlotName "Dev" -SettingName "WorkerCount" -SettingValue "20" -IsSlotSetting $true
+[/code]
+
+Note: Function will run silently and return no output upon success. On error, an exception will be thrown by the Azure cmdlets. Use -Verbose switch to see the detailed logging statements.
+
+[code language="powershell"]
+function Set-AzureWebAppSlotSetting {
+	<#
+.SYNOPSIS
+Adds (or updates) a single key/value application setting in an Azure Web App deployment slot.
+.DESCRIPTION
+This cmdlet will apply the specified setting to an Azure Web App deployment slot. If the setting is not found, it will be added. If the setting is already found, it will be updated to the new value.
+.PARAMETER WebAppName
+Name of the Azure Web Application
+.PARAMETER WebAppRgName
+Name of the resource group that contains the Azure Web Application
+.PARAMETER WebAppSlotName
+Name of the deployment slot. Use "Production" for the primary/default unnamed slot.
+.PARAMETER SettingName
+Name of the setting to be applied.
+.PARAMETER SettingValue
+Value of the setting to be applied.
+.PARAMETER IsSlotSetting
+Specify '$true' if the value should be stickied to the specific slot, or '$false' to allow the setting to migrate when swapping slots.
+.EXAMPLE
+Set-AzureWebAppSlotSetting -WebAppName "MyWebApp" -WebAppRgName "MyResourceGroup" -WebAppSlotName "Dev" -SettingName "WorkerCount" -SettingValue "20" -IsSlotSetting $true
+#>
+	[CmdletBinding()]
+	Param (
+		[Parameter(Mandatory=$true)][System.String]$WebAppName,
+		[Parameter(Mandatory=$true)][System.String]$WebAppRgName,
+		[Parameter(Mandatory=$true)][System.String]$WebAppSlotName,
+		[Parameter(Mandatory=$true)][System.String]$SettingName,
+		[Parameter(Mandatory=$true)][System.String]$SettingValue,
+		[Parameter(Mandatory=$true)][System.Boolean]$IsSlotSetting
+	)
+
+	Process {
+
+		# grab the existing settings and slotted config
+
+		Write-Verbose "Starting Set-AzureWebAppSlotSetting PROCESS{} block."
+
+		Write-Verbose "Running Get-AzureRmWebAppSlot to capture web app slot."
+		$slot = Get-AzureRmWebAppSlot -Name $WebAppName -ResourceGroupName $WebAppRgName -Slot $WebAppSlotName
+
+		Write-Verbose "Running Get-AzureRmWebAppSlotConfigName to capture web app slot configuration."
+		$slottedConfig = Get-AzureRmWebAppSlotConfigName -Name $WebAppName -ResourceGroupName $WebAppRgName
+
+		# determine if we need to apply an update
+
+		$requiresSettingApply = $false
+		$existingSetting = $slot.SiteConfig.AppSettings | where Name -eq $SettingName
+		if ($existingSetting -eq $null)
+		{
+			Write-Verbose "Existing setting was not found, will apply."
+			$requiresSettingApply = $true
+		}
+		else
+		{
+			if ($existingSetting.Value -ne $SettingValue)
+			{
+				Write-Verbose "Existing setting was found, but does not match value, will apply update."
+				$requiresSettingApply = $true
+			}
+			else
+			{
+				Write-Verbose "Existing setting was found and matches value, will not update."
+			}
+		}
+
+		if ($requiresSettingApply -eq $true)
+		{
+			# create a hash table with existing values
+			# then add/apply the new value
+
+			Write-Verbose "Preparing updated web application setting."
+
+			$newSettingsHash = @{}
+			foreach ($slotItem in $slot.SiteConfig.AppSettings)
+			{
+				if ($newSettingsHash.ContainsKey($slotItem.Name) -eq $false)
+				{
+					$newSettingsHash[$slotItem.Name] = $slotItem.Value
+				}
+			}
+			$newSettingsHash[$SettingName] = $SettingValue
+
+			# persist the configuration
+
+			Write-Verbose "Running Set-AzureRmWebAppSlot to apply web app slot settings."
+
+			Set-AzureRmWebAppSlot -Name $WebAppName -ResourceGroupName $WebAppRgName -Slot $WebAppSlotName -AppSettings $newSettingsHash | out-null
+		}
+
+		# determine if we need to apply an update to slotted settings list
+
+		$existingSlotted = $slottedConfig.AppSettingNames.Contains($SettingName)
+		if ($existingSlotted -eq $false)
+		{
+			if ($IsSlotSetting -eq $true)
+			{
+				Write-Verbose "Existing config setting = NotSlotted, Desired = Slotted, changes required."
+
+				# turn on the slotted attribute for this setting
+
+				$newSlottedArray = @($SettingName)
+				foreach ($slottedName in $slottedConfig.AppSettingNames)
+				{
+					$newSlottedArray += $slottedName
+				}
+
+				Write-Verbose "Running Set-AzureRmWebAppSlotConfigName to apply web app slotted setting names."
+				Set-AzureRmWebAppSlotConfigName -Name $WebAppName -ResourceGroupName $WebAppRgName -AppSettingNames $newSlottedArray | out-null
+			}
+			else
+			{
+				Write-Verbose "Existing config setting = NotSlotted, Desired = NotSlotted, no changes required."
+			}
+		}
+		else
+		{
+			if ($IsSlotSetting -eq $true)
+			{
+				Write-Verbose "Existing config setting = Slotted, Desired = Slotted, no changes required."
+			}
+			else
+			{
+				Write-Verbose "Existing config setting = Slotted, Desired = NotSlotted, changes required."
+
+				# turn off the slotted attribute for this setting
+
+				$newSlottedArray = @()
+				foreach ($slottedName in $slottedConfig.AppSettingNames)
+				{
+					if ($slottedName -ne $SettingName)
+					{
+						$newSlottedArray += $slottedName
+					}
+				}
+
+				Write-Verbose "Running Set-AzureRmWebAppSlotConfigName to apply web app slotted setting names."
+				Set-AzureRmWebAppSlotConfigName -Name $WebAppName -ResourceGroupName $WebAppRgName -AppSettingNames $newSlottedArray | out-null
+			}
+		}
+
+		Write-Verbose "Finished Set-AzureWebAppSettings PROCESS{} block."
+	}
+}
+[/code]
