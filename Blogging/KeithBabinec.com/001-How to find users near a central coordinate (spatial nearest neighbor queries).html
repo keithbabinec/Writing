@@ -1,0 +1,81 @@
+<h3>Scenario</h3>
+You have a database table of users who have a location specified. Given an input location point, coordinate, or city - find the top <em>N</em> (or all) of the nearest neighbors in range. So for example, if I am in Seattle, return 15 nearest users to my location within a 50 mile range. This is a classic spatial/geography scenario with many applicable uses. I used this technique when building some <a href="http://keithbabinec.com/about-tourvival/">Tourvival</a> features.
+<h3>Setup</h3>
+Our example uses Microsoft SQL Server, or SQL Azure database. Let's start by making an example users table.
+
+[code language="sql"]
+CREATE TABLE [dbo].[Users]
+(
+	[ID] uniqueidentifier not null primary key,
+	[LocationPoint] geography not null
+
+	--Non-relevant columns ommitted...
+)
+[/code]
+
+The <a href="https://docs.microsoft.com/en-us/sql/t-sql/spatial-geography/spatial-types-geography">geography</a> data type is a .NET CLR data type in SQL server that is used to represent data in a 'round-earth coordinate system'. More simply - it is a data type that stores both latitude and longitude together in one object, instead of storing them as separate columns for lat/long.
+
+For optimal performance, we also create an index on our [LocationPoint] column.
+
+[code language="sql"]
+CREATE SPATIAL INDEX [SPI_Users_Geography_LocationPoint]
+ON [dbo].[Users] (LocationPoint);
+[/code]
+
+Let's manually insert some test data for some fictional users in the Seattle area. Some of which may be out of our center point range.
+
+[code language="sql"]
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.60621,-122.33207, 4326) ) -- seattle
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.60748,-122.32894, 4326) ) -- seattle
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.60297,-122.16551, 4326) ) -- bellevue
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.62206,-122.20836, 4326) ) -- bellevue
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.75559,-122.19438, 4326) ) -- bothell
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.67583,-122.20370, 4326) ) -- kirkland
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.67189,-122.20392, 4326) ) -- kirkland
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.64397,-122.39043, 4326) ) -- seattle
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.62883,-122.36032, 4326) ) -- seattle
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.29836,-122.25363, 4326) ) -- auburn
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.22775,-122.44424, 4326) ) -- tacoma
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(48.51122,-122.61920, 4326) ) -- anacortes
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.98033,-122.20488, 4326) ) -- everett
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(47.99774,-122.19174, 4326) ) -- everett
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(48.05440,-122.18044, 4326) ) -- marysville
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(45.52280,-122.66926, 4326) ) -- portland
+INSERT INTO [dbo].[Users] VALUES ( newid(), geography::Point(45.52006,-122.67685, 4326) ) -- portland
+[/code]
+<h3>Spatial query</h3>
+Here is the simplified example query with a couple hard-coded parameters. In real production code, this should be locked up in a stored procedure with parameters.
+
+We declare a center point, a range limit, and then run the query leveraging the <a href="https://docs.microsoft.com/en-us/sql/t-sql/spatial-geography/stdistance-geography-data-type" target="_blank" rel="noopener">STDistance</a> method on the geography object columns:
+
+[code language="sql"]
+-- Geo-point for Seattle
+DECLARE @CenterPoint geography = geography::Point(47.60621, -122.33207, 4326)
+
+-- 50 mile range (expressed as meters)
+DECLARE @RangeMeters int = 80467
+
+SELECT	[dbo].[Users].[ID] as [UserID]
+FROM	[dbo].[Users]
+WHERE	([dbo].[Users].[LocationPoint]).STDistance(@CenterPoint) < @RangeMeters
+ORDER BY ([dbo].[Users].[LocationPoint]).STDistance(@CenterPoint)
+[/code]
+
+This will return a list of user IDs, in order by distance, within the limit range.
+
+<strong>Tip</strong>: You can create geography objects from lat/long coordinates using the <a href="https://docs.microsoft.com/en-us/sql/t-sql/spatial-geography/point-geography-data-type" target="_blank" rel="noopener">Geography.Point()</a> static method.
+
+Want to limit the results to the top <em>N</em> items? Add the <em>TOP</em> clause to the first line.
+
+[code language="sql" highlight="1"]
+SELECT	TOP 15 [dbo].[Users].[ID] as [UserID]
+FROM	[dbo].[Users]
+WHERE	([dbo].[Users].[LocationPoint]).STDistance(@CenterPoint) < @RangeMeters
+ORDER BY ([dbo].[Users].[LocationPoint]).STDistance(@CenterPoint)
+[/code]
+<h3>Output</h3>
+Since a simple list of user IDs doesn't make for a very interesting visual, I added the STDistance output value for each row to the query results.
+
+What we can see from the results is clear: users returned are near the center point, in order by distance, radiating outward to the range limit (50 miles).
+
+<img class="alignnone  wp-image-224" src="https://keithbabinec.files.wordpress.com/2017/04/nearby-query-results4.png" alt="nearby-query-results4" width="410" height="343" />
