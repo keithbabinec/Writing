@@ -1,0 +1,47 @@
+Good-old Windows event logs are a great location to write events for automation tools and scripts. It may not be flashy, but it provides key functionality for service engineering teams:
+<ul>
+	<li>It's easy to register custom sources for your applications.</li>
+	<li>It has configurable log size and rollover options so you don't need to worry about handling log file cleanup.</li>
+	<li>Log forwarding tools make it easy to examine or monitor logs in a central location.</li>
+	<li>Supports task/automation triggers.</li>
+</ul>
+Below are a few tips for registering custom sources.
+<h3>Tip 1: Register sources early, if possible</h3>
+From the MSDN doc on <a href="https://msdn.microsoft.com/en-us/library/2awhba7a(v=vs.110).aspx">CreateEventSource()</a>:
+<blockquote>Create the new event source during the installation of your application. This allows time for the operating system to refresh its list of registered event sources and their configuration. If the operating system has not refreshed its list of event sources, and you attempt to write an event with the new source, the write operation will fail.</blockquote>
+I have seen a handful of cases where a custom log was not immediately available to write to. This is an odd timing thing and is pretty difficult to reproduce. Most of the time it just works immediately. Have a backup plan to handle this edge case.
+<h3>Tip 2: C#/.NET or PowerShell code can quickly setup a custom source</h3>
+Functionally, it doesn't matter which one you choose. <a href="https://github.com/PowerShell/PowerShell/blob/master/src/Microsoft.PowerShell.Commands.Management/commands/management/Eventlog.cs">Under the hood</a>, the PowerShell code just calls .NET function anyway. Examples:
+
+[code language="csharp" title="C#"]
+// void return
+System.Diagnostics.EventLog.CreateEventSource("CoolCustomSource", "Application");
+[/code]
+
+[code language="powershell" title="PowerShell"]
+# void return
+New-EventLog -LogName Application -Source "CoolCustomSource"
+[/code]
+<h3>Tip 3: Use .NET to check if a custom source already exists.</h3>
+Problem: PowerShell doesn't have a Test-EventLogSourceExists (or similar) cmdlet. To make matters slightly worse, if you run this:
+
+[code language="powershell" title="PowerShell"]
+New-EventLog -LogName Application -Source "CoolCustomSource"
+Get-EventLog -LogName Application -Source "CoolCustomSource"
+[/code]
+
+The above code throws an exception that the source doesn't exist, even though you just created it. The reason is that no events have been written using the source yet.
+
+Instead, you have to call the <a href="https://msdn.microsoft.com/en-us/library/9d7bfbtc(v=vs.110).aspx">.NET method</a> directly to check if the source exists.
+
+[code language="csharp" title="C#"]
+// returns bool
+System.Diagnostics.EventLog.Exists("CoolCustomSource");
+[/code]
+
+[code language="powershell" title="PowerShell"]
+# returns bool
+[System.Diagnostics.EventLog]::Exists("CoolCustomSource")
+[/code]
+
+ 
