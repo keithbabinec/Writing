@@ -1,0 +1,94 @@
+Introduction:
+
+We encounter enum types frequently when using PowerShell cmdlets. For anyone who isn’t familiar, an enum is an enumeration of named constants; essentially, a static list of options or choices. A good example of this is when you run Get-VM in Hyper-V to examine a Virtual Machine. The State property of the Virtual Machine object displays whether the VM is Running, Stopped, Saved, etc.
+
+        PS C:\> $virtualmachine = get-vm -ComputerName TestServer -name TestVM
+        PS C:\> $virtualmachine | fl Name, State
+        
+        Name  : TestVM
+        State : Running
+
+Instead of storing this data in a text/string field, this object is stored as an enum type. This means there are limited and defined possible choices this value can be – and it will never fall outside of these possible values. This becomes really helpful in scripts for the consumer of the cmdlet to make logic decisions based on the value (such as the leveraging the switch statement).
+
+How do we know the property is an enum type?
+
+Utilize the GetType() method found on any object inside PowerShell (or, the .NET Framework). In the example below we have run GetType() against both the Name and State properties of the VM object. As seen in the output the base type for State is System.Enum. This means we have an enum type.
+
+        PS C:\> $virtualmachine.Name.GetType()
+        
+        IsPublic IsSerial Name                                     BaseType
+        -------- -------- ----                                     --------
+        True     True     String                                   System.Object
+        
+        PS C:\> $virtualmachine.State.GetType()
+        
+        IsPublic IsSerial Name                                     BaseType
+        -------- -------- ----                                     --------
+        True     True     VMState                                  System.Enum
+
+How do we find the other possible enumeration values?
+
+If the VM is currently in Running state, what other possible states exist? This is a very common question that arises when working with enums. The answer is usually found in the cmdlet documentation, but this is not always the case. Follow these steps to retrieve the answer on your own:
+
+First, locate the full name of the enumeration type. Extract the FullName property from the enum, as depicted below.
+
+        PS C:\> $virtualmachine.State.GetType().FullName
+        Microsoft.HyperV.PowerShell.VMState
+
+Second, call the GetValues() static method on the enum type. Be sure to enclose the full type name inside square brackets. Example with desired output is below.
+
+Note 1: If you attempt to use GetValues() on the partial type name (VMState) instead of the full type name (Microsoft.HyperV.PowerShell.VMState), PowerShell is likely going to complain that it can’t find the type. Ensure you use the full type name.
+
+Note 2: A newer PSv3 only method to accomplish this same task is to call [Microsoft.HyperV.PowerShell.VMState].GetEnumValues().
+
+        PS C:\> [enum]::GetValues([Microsoft.HyperV.PowerShell.VMState])
+        Other
+        Running
+        Off
+        Stopping
+        Saved
+        Paused
+        Starting
+        Reset
+        Saving
+        Pausing
+        Resuming
+        RunningCritical
+        OffCritical
+        StoppingCritical
+        SavedCritical
+        PausedCritical
+        StartingCritical
+        ResetCritical
+        SavingCritical
+        PausingCritical
+        ResumingCritical
+
+Capturing enumeration Integer values:
+
+To take it one step further, you can also find the associated integer values of the enumeration. This can be useful in certain programming scenarios.
+
+Here is a one-liner to accomplish that. All we do is cast the enumeration value to int and print it to the screen along with the text value.
+
+        PS C:\> foreach ($v in [enum]::GetValues([Microsoft.HyperV.PowerShell.VMState])) { write-host ([int]$v): $v }
+        1 : Other
+        2 : Running
+        3 : Off
+        4 : Stopping
+        6 : Saved
+        9 : Paused
+        10 : Starting
+        11 : Reset
+        32773 : Saving
+        32776 : Pausing
+        32777 : Resuming
+        32778 : RunningCritical
+        32779 : OffCritical
+        32780 : StoppingCritical
+        32781 : SavedCritical
+        32782 : PausedCritical
+        32783 : StartingCritical
+        32784 : ResetCritical
+        32785 : SavingCritical
+        32786 : PausingCritical
+        32787 : ResumingCritical
