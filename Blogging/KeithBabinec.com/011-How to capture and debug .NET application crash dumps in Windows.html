@@ -1,0 +1,207 @@
+It is important for software engineers to understand how to analyze process dumps so that they can determine why their application is crashing or behaving unexpectedly. However, it can be hard to know where to start with the process. This post aims to be a starting point for a very common situation: debugging a crash dump for a .NET application running on Windows. A crashing application is easily detected in the Windows Event Log when the .NET Framework logs the error, “The process was terminated due to an unhandled exception.”
+
+<img class="alignnone size-full wp-image-1089" src="https://keithbabinec.files.wordpress.com/2018/06/dotnet-application-unhandled-error-1.png" alt="dotnet-application-unhandled-error-1" width="1441" height="371" />
+
+This post describes how to capture dump files for the failing application at the time of crash, and then analyze the dump to figure out what happened. We start by creating a crashing 'hello world' application. We review what happens in Windows during an application crash and go over some steps to capture dump files automatically when the application fails. Lastly, we review basic debugger commands to kick-start a crash dump analysis.
+<h3>Writing a Hello World crash program</h3>
+For this exercise, we use the Visual Studio IDE to write and compile our crash application. You can download the free community edition <a href="https://www.visualstudio.com/vs/">here</a>. Start by creating a new C# console application (.NET Framework), and select a recent edition of the framework such as 4.5 or later. Title the project and solution with 'HelloWorldCrasher'.
+
+When the new project is ready to edit, open the Program.cs file and replace the entire contents with the following code:
+
+[code language="csharp" title="C#"]
+using System;
+
+namespace HelloWorldCrasher
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            FirstMethod("Hello World! Lets crash!");
+        }
+
+        static void FirstMethod(string crashingText)
+        {
+            SecondMethod(crashingText);
+        }
+
+        static void SecondMethod(string crashingText)
+        {
+            throw new InvalidOperationException(crashingText);
+        }
+    }
+}
+[/code]
+
+This code throws an exception that isn't handled by our program, which will cause it to crash. Save the file and build the solution (F6 key). In the program's output folder (bin\debug) you should find the compiled application (*.exe) and symbol file (*.pdb).
+
+Navigate to the build output directory and run the *.exe file. It should run, display a stack trace in the console window, and then quit in a couple seconds. The next section discusses the factors that determine how Windows reacts to the crash.
+<h3>User mode exception handlers in Windows</h3>
+When a user mode exception occurs, Windows runs through an ordered list of exception handlers (outlined below) to determine what to do. If the answer to any question below is no, then it continues to the next handler. Here is how it plays out:
+<ol>
+	<li>Is a user-mode debugger program (such as Visual Studio) attached to the process with the error?
+<ul>
+	<li>If yes, break-in to the process for live debugging.</li>
+</ul>
+</li>
+	<li>Does the executing code have it's own exception handler?
+<ul>
+	<li>If yes, let the application deal with the error.</li>
+</ul>
+</li>
+	<li>Is a kernel debugger (such as WinDbg) attached and have a breakpoint interrupt?
+<ul>
+	<li>If yes, Windows will attempt to contact the kernel debugger.</li>
+</ul>
+</li>
+	<li>Does the Windows Registry have a postmortem debugger defined in the registry?
+<ul>
+	<li>If yes, activate the specified debugger to create a dump file or attach to the live process, depending on the specified program and arguments.</li>
+</ul>
+</li>
+	<li>If none of the above steps applied:
+<ul>
+	<li><strong>Windows Error Reporting (WER)</strong> takes over.</li>
+	<li>WER handles the crash and may display an error message if solutions are available.</li>
+	<li>Process dump files can be written to disk if settings for this are configured (off by default).</li>
+</ul>
+</li>
+</ol>
+For full details refer to the MSDN reference documentation <a href="https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/enabling-postmortem-debugging">here</a>.
+
+<strong>So what happens on most PC's?</strong> For a default installation, you won't have a connected live debugger program or a postmortem debugger configured. This means that WER handles the exception and writes the crash event.
+
+However, the default configuration for WER is not to save a dump file on disk. In this case, you should see some WER-related events in the Windows Event Log's Application log for your crash, but no memory dump files (*.dmp) in the folder where WER stores the crash data.
+
+<strong>Not storing dump files is the default for a lot of good reasons, including security, privacy, and disk space</strong>. This is because a full dump file includes the process's entire memory space at the time of the crash. What if that process memory was several gigabytes in size? What if it included sensitive data like passwords or personally identifiable information (PII)?
+
+However sometimes we really do need to capture that full memory dump in order to troubleshoot why our application crashed. A stack trace logged to the event log may not always be enough, and we want to explore deeper to find what was happening in the process at the time of the crash or have specialized tools analyze it. Full dumps allow you to explore the root cause of a crash in a program that you develop or support. Just remember to turn it off once it is no longer needed.
+<h3>How do I automatically capture the crashing process dump file?</h3>
+Because the dump file isn't created by default, we need to configure registry settings to enable this. You have two choices for enabling capture. The first is to configure the postmortem debugger settings mentioned in step 4 from the previous section. MSDN has a great article on how to do this <a href="https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/enabling-postmortem-debugging#span-idddkenablingpostmortemdebuggingdbgspanspan-idddkenablingpostmortemdebuggingdbgspanuser-mode-exception-handling">right here</a>. When you use this option, you specify a debugger program such as Visual Studio, ProcDump, WinDbg, or ADPlus and provide the command switches for those programs to create the dump file, or attach to the process for live debugging if they support that.
+
+The second option is to configure WER to create a dump file for your specific application if it crashes. You can go this route if you don't want live debugging and just need the dump file created on disk for later analysis. This feature is included in Windows, so there is no need to install extra software to create the dump. WER dump settings are configured via the registry as follows:
+<ul>
+	<li>First create the base WER local dump registry key, if it doesn't already exist.
+<ul>
+	<li><strong>HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps</strong></li>
+</ul>
+</li>
+	<li>Then, create the application specific dump file settings key.
+<ul>
+	<li>If the application to save dumps for is <strong>HelloWorldCrasher.exe</strong>, then make the following:</li>
+	<li>New Key:<strong> HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\HelloWorldCrasher.exe</strong>
+<ul>
+	<li>Registry values under this key:
+<ul>
+	<li><strong>DumpFolder</strong>: [REG_EXPAND_SZ] folder path to store dump files.</li>
+	<li><strong>DumpType</strong>: [REG_DWORD] Specify a value of <strong>2</strong> for full dumps, or <strong>1</strong> for mini-dump (smaller, but not full process memory space).</li>
+	<li><strong class="">DumpCount</strong>: [REG_DWORD] the number of dumps to save before overwriting old dump files. Default is 10.</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+It should look something like this:
+
+<img class="alignnone size-full wp-image-1086" src="https://keithbabinec.files.wordpress.com/2018/06/wer-dump-reg-keys.png" alt="wer-dump-reg-keys" width="1228" height="428" />
+
+After you have configured these settings in the registry for our hello world crashing application, go ahead and re-run the executable file. This time when it crashes we should see a dump file created on disk in the folder we specified.
+
+<img class="alignnone size-full wp-image-1087" src="https://keithbabinec.files.wordpress.com/2018/06/dump-file-created.png" alt="dump-file-created" width="1113" height="208" />
+<h3>Dump analysis step 1: Install the debug tools</h3>
+The program we will use to analyze this dump file is WinDbg. Its a free tool that comes packaged with the Windows Driver Kit (WDK) or the Windows Software Development Kit (SDK). If you dont already have it installed and you just need WinDbg, you can <a href="https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/">download one of those installers</a> and uncheck all features except "debugging tools for windows".
+
+For example, after I installed it from the Windows 10 SDK, the debug tools, including WinDBG, were under these directories:
+<blockquote>C:\Program Files (x86)\Windows Kits\10\Debuggers\x64
+C:\Program Files (x86)\Windows Kits\10\Debuggers\x86</blockquote>
+<h3>Dump analysis step 2: Open WinDbg and the dump file</h3>
+Open the version of WinDbg (x86 or x64) that matches the platform target of the crashing application. For example, if your application is 64 bit, run the 64 bit version of WinDbg. Our crashing application was built with the default anycpu/x86 platform target, so open x86 WinDbg unless you modified the project to target x64.
+
+From the file menu, select "open crash dump" (Ctrl+D), and select the dump file created earlier. After maximizing the dump window inside the program, it should look something like this:
+
+<img class="alignnone size-full wp-image-1091" src="https://keithbabinec.files.wordpress.com/2018/06/windbg-loaded.png" alt="windbg-loaded" width="1359" height="868" />
+<h3>Dump analysis step 3: Load application symbols</h3>
+The next step here is to load application <a href="https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/symbols-and-symbol-files">symbols</a>. This is important because loading symbols in a debugging session helps restore <em>context</em> to the application binary that had information stripped out from it at build time. This includes things like line numbers, variables, function names, etc.
+
+Lets enter the next few commands in the command box at the bottom of WinDbg to setup our symbol cache and loading preferences.
+
+Enable verbose symbol logging:
+<blockquote>!sym noisy</blockquote>
+Set the symbol search path to Microsoft's public symbol server (for Microsoft owned binaries), and to our application compiled output folder (where our .pdb symbol file is located). Also set the local caching folder to store downloaded symbols. Adjust the cache folder and application private folder to the exact folders on your computer. If the paths aren't an exact match, the symbols wont load.
+<blockquote>.sympath srv*https://msdl.microsoft.com/download/symbols
+.sympath+ cache*C:\debug\symbols
+.sympath+ D:\Source\HelloWorldCrasher\HelloWorldCrasher\bin\Debug</blockquote>
+Force reload symbols for this dump.
+<blockquote>.reload
+ld*</blockquote>
+If this worked correctly, we should see that the debugger correctly loaded our private symbols for our application:
+
+<img class="alignnone size-full wp-image-1095" src="https://keithbabinec.files.wordpress.com/2018/06/loaded-symbols-v1.png" alt="loaded-symbols-v1" width="1344" height="881" />
+<h3>Dump analysis step 4: Load the SOS extension</h3>
+<a href="https://docs.microsoft.com/en-us/dotnet/framework/tools/sos-dll-sos-debugging-extension">SOS</a> is a debugging tool extension that makes debugging managed code (.NET applications) easier by providing details about the .NET Command Language Runtime (CLR) environment. It is installed when you install the .NET Framework component. The catch here is that you need the correct SOS version that matches the framework version used in your application, and loading this for older framework versions follows a <a href="https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/debugging-managed-code">slightly different process</a>. For .NET 4 and later (like our sample app), just run the following:
+<blockquote>.loadby sos clr</blockquote>
+You won't see any output on successful load. However, if you want to verify that it actually loaded, run the following command to print the loaded extensions:
+<blockquote>.chain</blockquote>
+You should see SOS as pictured below:
+
+<img class="alignnone size-full wp-image-1096" src="https://keithbabinec.files.wordpress.com/2018/06/sos-loaded.png" alt="sos-loaded" width="1304" height="884" />
+<h3>Dump analysis step 5: Run debugging commands</h3>
+Finally we are at the point where we can do something interesting with our crash dump. The best way to start is to run the !analyze extension with the -v switch. This will examine the dump and provide loads of immediately useful output.
+<blockquote>!analyze -v</blockquote>
+In this simple crash situation, we got the data for our error message and a stack trace with line numbers. Our 'Hello World! Lets crash!' message from code is printed right on screen for us to see:
+
+<img class="alignnone size-full wp-image-1097" src="https://keithbabinec.files.wordpress.com/2018/06/analyze-output-1.png" alt="analyze-output-1.PNG" width="1321" height="1183" />
+
+Lets review a few other commands to poke around further. First up is !threads, which is used to print the list of threads that were running at the time of crash. In our case, there were just two threads. You can see which of the two threads has the crash in it.
+<blockquote>!threads</blockquote>
+<img class="alignnone size-full wp-image-1098" src="https://keithbabinec.files.wordpress.com/2018/06/threads-output.png" alt="threads-output" width="1428" height="852" />
+
+Notice on the left side of the threads list, there is a thread ID. 0 for the first thread, and 5 for the second one, in our example above.
+
+We can find the stack trace of a specific thread by switching context to that thread number ('~' char, plus the thread id, plus the 's' char), and running !clrstack. We happened to already be on this thread context, but I'm using the command here to demonstrate how to switch if we needed to.
+
+Don't forget to pass the -a parameter to !clrstack. This parameter prints the parameters and locals!
+<blockquote>~0s
+!clrstack -a</blockquote>
+<img class="alignnone size-full wp-image-1100" src="https://keithbabinec.files.wordpress.com/2018/06/stacks-output-2.png" alt="stacks-output-2.PNG" width="1503" height="592" />
+
+Notice that the actual parameter name (crashingText) was provided, and you can see a memory address next to it. That address (in blue) is the memory address of the value supplied to that parameter. You can click on that link directly, which runs the !dumpobj command for that specific memory address. This is extremely useful for walking through objects in memory, and easier then manually typing out the memory address to dump.
+
+When we dump this particular object, we can see that it is a System.String object, we can see the value, and other useful information. By walking the stacks and dumping objects, we can get a pretty good look into the state of the application at the time the crash occurred.
+
+<img class="alignnone size-full wp-image-1101" src="https://keithbabinec.files.wordpress.com/2018/06/dump-obj.png" alt="dump-obj" width="1251" height="393" />
+<h3>Tips and FAQ</h3>
+<ul>
+	<li>Is the Microsoft symbol server throwing a certificate error? Try using http instead of https in the address.</li>
+	<li>What does the "<em>Win32 error 0n193 %1 is not a valid Win32 application</em>" error mean when trying to load SOS? This means you likely loaded the wrong platform target of WinDbg (doesn't match the application's platform target, either x86 or x64).</li>
+	<li>Why does Visual Studio prompt to live debug the application crash? This happens when you have Visual Studio set to be the postmortem debugger, and that debugger is enabled.</li>
+	<li>How do I learn more WinDbg commands to run? Read these helpful resources for <a href="http://windbg.info/doc/1-common-cmds.html">WinDbg commands</a> and <a href="https://docs.microsoft.com/en-us/dotnet/framework/tools/sos-dll-sos-debugging-extension">SOS commands</a>.</li>
+</ul>
+<h3>Summary and Starter Kit</h3>
+We have walked through the entire process of creating a crashing process, capturing the crash dump, and then doing a basic analysis on the dump file. Lets do a final recap and combine the key commands we used into a crash dump debugging starter kit for future reference:
+
+<strong>Prep symbols and load SOS:</strong>
+<blockquote># set symbol settings and paths
+!sym noisy
+.sympath srv*https://msdl.microsoft.com/download/symbols
+.sympath+ cache*C:\Debug\SymbolCache
+.sympath+ D:\Source\MyApplication\MyApplication\bin\Debug
+
+# reload symbols
+.reload
+ld*
+
+# load SOS extension
+.loadby sos clr</blockquote>
+<strong>Key debugging commands:</strong>
+<blockquote># view exception analysis, view thread state
+!analyze -v
+!threads
+
+# thread switch, view stacks, dump objects
+~0s
+!clrstack -a
+!dumpobj /d</blockquote>
+This is really only scratching the surface of dump analysis in general, but it should give you a preliminary idea on what's happening with most .NET application crashes. Good luck and happy debugging!
