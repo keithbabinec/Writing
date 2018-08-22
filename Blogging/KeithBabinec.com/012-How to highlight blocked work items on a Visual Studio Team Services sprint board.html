@@ -1,0 +1,33 @@
+Today we are going to walk through a helpful modification to the Visual Studio Team Services (VSTS) process and style templates; with the goal of making it easier to find and visualize blocked work.
+<h3>What is blocked work?</h3>
+In a scrum or agile setting, 'blocked' is the state of a work item that you cannot complete due to external factors. For example, you cannot add a feature because you are waiting for a co-worker to finish an outstanding pull request that your work builds upon. Or you cannot complete a user story because you are waiting on another department to provide a license to a 3rd party API.
+
+It's helpful for both engineers and product/project managers to identify and resolve blocked work quickly so the sprint can continue. The problem today is that in the default view of a VSTS sprint board, you can't tell if anything is blocked without diving into each work item.
+<h3>Updating your view to see blocked work</h3>
+There are some changes you can make to your VSTS process definition and sprint board styles that allow you to visualize blocked work. It doesn't require installing any extensions either. There are two phases to the process: modify your work item templates and adding custom style rules.
+<h3>Step 1: Add a 'Blocked' field to your work items</h3>
+<p style="padding-left: 30px;">1. Visit the root of your team/collection.</p>
+<p style="padding-left: 30px;">2. Click on the 'Settings' gear icon, and click the 'Process' menu item. If you don't see the 'Process' menu item, you are likely looking at the Settings menu for a specific project. You need to navigate upwards to the parent/root collection.</p>
+<p style="padding-left: 30px;"><img class="alignnone size-full wp-image-1122" src="https://keithbabinec.files.wordpress.com/2018/08/1-collection-settings-process.png" alt="1-collection-settings-process" width="1778" height="958" />3. On the 'All processes' page, you should see existing processes built into VSTS (like Agile and Scrum). You cannot modify those templates. But you can make a new process that inherits from one of those so we can make changes. Make a new process for your team/organization if you haven't already. Otherwise click the name of the existing process to modify.</p>
+<p style="padding-left: 30px;"><img class="alignnone size-full wp-image-1123" src="https://keithbabinec.files.wordpress.com/2018/08/2-process-selection.png" alt="2-process-selection" width="1780" height="681" />4. Click on the 'Task' work item type.</p>
+<p style="padding-left: 30px;"><img class="alignnone size-full wp-image-1124" src="https://keithbabinec.files.wordpress.com/2018/08/3-select-work-item-type.png" alt="3-select-work-item-type" width="1778" height="1070" /> 5. In this view we can modify the template for what options are available on a <em>Task</em> work item. We want to add our 'Blocked' field here. Click the 'New field' button in the top left.</p>
+<p style="padding-left: 30px;"><img class="alignnone size-full wp-image-1126" src="https://keithbabinec.files.wordpress.com/2018/08/4-new-field.png" alt="4-new-field" width="1778" height="1228" /></p>
+<p style="padding-left: 30px;">6. Under the 'Definition' tab, select 'Use an existing field' to add the predefined 'Blocked' field to the Task work item template. Under the options tab on the left pane, set the default value to 'No' (we want work items to start as unblocked).</p>
+<p style="padding-left: 30px;"><img class="alignnone size-full wp-image-1125" src="https://keithbabinec.files.wordpress.com/2018/08/5-add-blocked-field.png" alt="5-add-blocked-field" width="1769" height="1309" /></p>
+<p style="padding-left: 30px;">7. Repeat steps 4-6 work the 'Bug' work item type as well.</p>
+
+<h3>Step 2: Update the sprint board card styles</h3>
+Now that our 'Bug' and 'Task' work item types support a blocked field, we need to add the style changes to the sprint cards.
+<p style="padding-left: 30px;">1. In the sprint board view, click on the 'settings' gear icon to configure team settings.</p>
+<p style="padding-left: 30px;"><img class="alignnone size-full wp-image-1127" src="https://keithbabinec.files.wordpress.com/2018/08/6-sprint-board-pre-style-updates.png" alt="6-sprint-board-pre-style-updates" width="1984" height="954" /></p>
+<p style="padding-left: 30px;">2. In the 'Fields' pane from the left side navigation, add the new 'Blocked' field to the display card. Perform this action for both tasks and bugs, by clicking on the Task or Bug tab menu items shown below.</p>
+<p style="padding-left: 30px;"><img class="alignnone size-full wp-image-1128" src="https://keithbabinec.files.wordpress.com/2018/08/7-add-field-to-work-item-cards.png" alt="7-add-field-to-work-item-cards" width="1984" height="1361" /></p>
+<p style="padding-left: 30px;">3. Navigate to the 'Styles' pane from the 'Settings' left side navigation. This is where we can make style rules that indicate a work item tile card should change to a different color when blocked.</p>
+<p style="padding-left: 30px;">The example rule I have pictured below creates a new rule that changes Tasks to orange if blocked. Notice that there are two conditions- one for the blocked field, and one that narrows the rule to just the 'Task' work item type.</p>
+<p style="padding-left: 30px;"><img class="alignnone size-full wp-image-1129" src="https://keithbabinec.files.wordpress.com/2018/08/8-add-style-rule-to-work-item-cards.png" alt="8-add-style-rule-to-work-item-cards" width="1985" height="1591" /></p>
+<p style="padding-left: 30px;">Repeat the same process for bugs by creating another rule, but select a different color (such as red). Save the changes.</p>
+
+<h3>The resulting view</h3>
+After making the work item template changes and the style card changes, we can open some example tasks or bugs and set the newly added 'Blocked' field to 'Yes'. Then your view should look something like this (below). My example blocked task is highlighted orange, and my blocked bug is highlighted red per the style rules I defined.
+
+<img class="alignnone size-full wp-image-1130" src="https://keithbabinec.files.wordpress.com/2018/08/9-styled-blocked-tasks-bugs.png" alt="9-styled-blocked-tasks-bugs" width="1986" height="1057" />
