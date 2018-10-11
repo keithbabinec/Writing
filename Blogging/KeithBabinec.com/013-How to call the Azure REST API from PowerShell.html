@@ -1,0 +1,210 @@
+Normally we use SDKs to interact with Azure. Things like the Azure .NET SDK, the Azure PowerShell module, or the dozens of other <a href="https://azure.microsoft.com/en-us/downloads/">SDKs listed here</a> can be used. These SDKs provide a lot of helpful utilities and validation, but ultimately they will hit the <a href="https://docs.microsoft.com/en-us/rest/api/?view=Azure">Azure REST API</a> once they need to phone home. Azure's REST API provides this all-important foundation to write code against the platform.
+
+Fortunately the Azure REST API is well documented and is easy to use. So in this post we will cover the basics of how use it directly from PowerShell, without the need to install an Azure SDK.
+
+Why might you do this? At least three situations come to mind:
+
+<ol>
+	<li>You are prohibited from using an SDK due to some kind of packaging, environment, or security restriction.</li>
+	<li>The REST API has functionality that isn't yet available in your desired SDK.</li>
+	<li>Bugs in the SDK force you to work around it and talk to the API directly.</li>
+</ol>
+
+My advice is to use an SDK when you can (it makes life easier). But if you can't-- then follow these steps.
+
+<h3>Prerequisites</h3>
+
+You will need an Azure subscription and an Azure Active Directory (AAD) client application with a secret key. Follow <a href="https://docs.microsoft.com/en-us/azure/azure-resource-manager/resource-group-create-service-principal-portal">these instructions</a> if you aren't familiar with how to setup an AAD application and/or secret key. You will need the Tenant ID, the AAD client ID, and the AAD client secret key to continue.
+
+<em>Note 1: This assumes you are using the Azure Resource Manager (ARM) deployed components. These instructions won't work for classic components.</em>
+
+<em>Note 2: The authentication step of the process can be done with certificate authentication, but our examples here are for the client ID + client secret style authentication</em>.
+
+<h3>Authentication</h3>
+
+We can't call the Azure REST API until we have first authenticated with our tenant using our AAD client application.
+
+To do this we submit an HTTP post to the Azure authentication endpoint for our tenant, and provide the client details as encoded parameters in the message body. Once we have generated a new authentication token, we can pass that token into the headers of future REST calls.
+
+Here is an example function (also on <a href="https://github.com/keithbabinec/AzurePowerShellUtilityFunctions/blob/master/Functions/Public/New-AzureRmAuthToken.ps1">GitHub here</a>) to generate an authentication token:
+
+[code language="powershell"]
+function New-AzureRmAuthToken
+{
+    <#
+        .SYNOPSIS
+        Creates a new authentication token for use against Azure RM REST API operations.
+
+        .DESCRIPTION
+        Creates a new authentication token for use against Azure RM REST API operations. This uses client/secret auth (not certificate auth).
+        The returned output contains the OAuth bearer token and it's properties.
+
+        .PARAMETER AadClientAppId
+        The AAD client application ID.
+
+        .PARAMETER AadClientAppSecret
+        The AAD client application secret
+
+        .PARAMETER AadTenantId
+        The AAD tenant ID.
+
+        .EXAMPLE
+        New-AzureRmAuthToken -AadClientAppId '<app id>' -AadClientAppSecret '<app secret>' -AadTenantId '<tenant id>' 
+    #>
+
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory=$true, HelpMessage='Please provide the AAD client application ID.')]
+        [System.String]
+        $AadClientAppId,
+
+        [Parameter(Mandatory=$true, HelpMessage='Please provide the AAD client application secret.')]
+        [System.String]
+        $AadClientAppSecret,
+
+        [Parameter(Mandatory=$true, HelpMessage='Please provide the AAD tenant ID.')]
+        [System.String]
+        $AadTenantId
+    )
+
+    Process
+    {
+        # auth URIs
+        $aadUri = 'https://login.microsoftonline.com/{0}/oauth2/token'
+        $resource = 'https://management.core.windows.net'
+
+        # load the web assembly and encode parameters
+        $null = [Reflection.Assembly]::LoadWithPartialName('System.Web')
+        $encodedClientAppSecret = [System.Web.HttpUtility]::UrlEncode($AadClientAppSecret)
+        $encodedResource = [System.Web.HttpUtility]::UrlEncode($Resource)
+
+        # construct and send the request
+        $tenantAuthUri = $aadUri -f $AadTenantId
+        $headers = @{
+            'Content-Type' = 'application/x-www-form-urlencoded';
+        }
+        $bodyParams = @(
+            "grant_type=client_credentials",
+            "client_id=$AadClientAppId",
+            "client_secret=$encodedClientAppSecret",
+            "resource=$encodedResource"
+        )
+        $body = [System.String]::Join("&", $bodyParams)
+
+        Invoke-RestMethod -Uri $tenantAuthUri -Method POST -Headers $headers -Body $body
+    }
+}
+[/code]
+
+Next up, load the function into memory and make it available for use. Once available, execute the function with your client and tenant values and save the token output to a variable. If the call to Azure fails it should throw an exception. 
+
+[code language="powershell"]
+$authResult = New-AzureRmAuthToken -AadClientAppId '<app id>' -AadClientAppSecret '<app secret>' -AadTenantId '<tenant id>'
+[/code]
+
+This is what the object looks like (with secrets blurred out). The actual token value is the huge text string under the access_token property.
+
+<img src="https://keithbabinec.files.wordpress.com/2018/10/new-token-result.png" alt="new-token-result" width="1411" height="536" class="alignnone size-full wp-image-1146" />
+ 
+<h3>Example API call</h3>
+
+Now that we have an authentication token we can use that to call the REST API and do something useful. In this example we will call the REST API to create (or update) a storage account.
+
+According to the <a href="https://docs.microsoft.com/en-us/rest/api/storagerp/storageaccounts/storageaccounts_create">storage accounts API documentation</a>, we should issue an HTTP PUT request to the following location: 
+
+[code language="text"]
+PUT https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Storage/storageAccounts/{accountName}?api-version=2018-07-01
+[/code]
+
+We are also supposed to supply a JSON body that contains the request options. Here is a modified example Azure has provided for some sample options as raw JSON:
+
+[code language="text"]
+{
+  "sku": {
+    "name": "Standard_GRS"
+  },
+  "kind": "Storage",
+  "location": "eastus",
+  "tags": {
+    "key1": "value1",
+    "key2": "value2"
+  }
+}
+[/code]
+
+There are few routes to go with the JSON body contents. You could hardcode a JSON string literal, you could import JSON from a file or other location, or you can dynamically generate the body as a PSCustomObject and then convert it to JSON string for injection into the request body.
+
+Below you can find an example call wrapped up in a function, using a converted PSCustomObject source for the request body. This is overkill for the example, but should provide some ideas for how a more complex function wrapper might work if you need more dynamic request options.
+
+[code language="powershell"]
+function New-AzureStorageAccount
+{
+	## This is an abbreviated example.
+	## Missing help, proper param declaration, and error handling
+	
+	[CmdletBinding()]
+	param
+	(
+		$StorageAccountName,
+		$StorageAccountType,
+		$StorageRegion,
+		$SubscriptionID,
+		$ResourceGroupName,
+		$Token
+	)
+	process
+	{
+		# construct request body object
+		$requestBody = [pscustomobject]@{
+			sku = [pscustomobject]@{
+				name = $StorageAccountType
+			}
+			kind = "Storage"
+			location = $StorageRegion
+			tags = [pscustomobject]@{
+				key1 = "value1"
+				key2 = "value2"
+			}
+		}
+		
+		# convert request body object to a JSON string
+		$requestBodyAsJson = ConvertTo-Json -InputObject $requestBody -Depth 2
+		
+		# construct headers
+		$headers = @{
+			'Host' = 'management.azure.com'
+			'Content-Type' = 'application/json';
+			'Authorization' = "Bearer $Token";
+        	}
+		
+		# construct the resource URI
+		$baseStorageUri = "https://management.azure.com/subscriptions/{0}/resourceGroups/{1}/providers/Microsoft.Storage/storageAccounts/{2}?api-version=2018-07-01"
+		$storageUri = $baseStorageUri -f $SubscriptionID, $ResourceGroupName, $StorageAccountName
+
+		# call the API
+        Invoke-RestMethod -Uri $storageUri -Method PUT -Headers $headers -Body $requestBodyAsJson
+	}
+}
+[/code]
+
+Then call the function:
+
+[code language="powershell"]
+New-AzureStorageAccount -StorageAccountName '<account name>' `
+	-StorageAccountType 'Standard_GRS' `
+	-StorageRegion 'eastus' `
+	-SubscriptionID '<subscription id>' `
+	-ResourceGroupName '<resource group name>' `
+	-Token $authResult.access_token
+[/code]
+
+Creating an Azure resource is typically an async operation. If your request is accepted, then the HTTP response message will contain a link to query the status. 
+
+If you extract this URI you can then send an HTTP GET message to it, with your same authorization header as before, and it will retrieve the status. Like this:
+
+<img src="https://keithbabinec.files.wordpress.com/2018/10/provision-success.png" alt="provision-success" width="1581" height="449" class="alignnone size-full wp-image-1147" />
+
+<em>Tip: Working in a new Azure subscription? If you are positive that your AAD client application has the correct permissions to create resources, but you still receive access denied, then you may need to register the storage provider in the subscription settings.</em>
+
+That wraps it up! We have successfully made a call to Azure via the REST API to create a storage account.
