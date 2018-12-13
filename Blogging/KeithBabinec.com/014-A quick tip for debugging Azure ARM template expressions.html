@@ -1,0 +1,79 @@
+<!-- wp:paragraph -->
+<p>Azure Resource Manager (ARM) templates have a nice set of <a href="https://docs.microsoft.com/en-us/azure/azure-resource-manager/resource-group-template-functions">built-in functions</a> that allow you to develop complex expressions. These expressions can help a static deployment template file become more scalable and flexible for different scenarios. This article is a quick rundown on my new favorite tip for debugging a template expression that you just can't get working.&nbsp;</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Tip: Run a deployment with no resources and place your expression in the outputs section</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The cool thing here is that you can actually initiate an ARM template deployment that has no resources in it- Azure doesn't mind at all. In fact it runs through the normal template validation process and still produces output variables if you have items in that section.&nbsp;</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>First you simply start with an <a href="https://docs.microsoft.com/en-us/azure/azure-resource-manager/resource-group-authoring-templates#template-format">empty deployment JSON file</a>. Then add in the minimum number of parameters you need. Lastly, construct the expression you are debugging into an output parameter. The reason for it to be an output parameter is so that you can see the result of your expression printed back to the screen for you.&nbsp;</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>This approach saves time on templates of all sizes by not actually deploying or verifying resources. You can quickly iterate through different testing values or syntax and get faster feedback on if your template expression is actually valid. Start with a small test, work your way up, and add more pieces until you have your completed/working expression.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Example: Simple concat() function expression test</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Scenario: You want a template to deploy a storage account. The name of that storage account should be constructed using multiple parameters (such as a name prefix, some sort of regional suffix, etc.). This is an easy expression using the <a href="https://docs.microsoft.com/en-us/azure/azure-resource-manager/resource-group-template-functions-array#concat">concat()</a> function and a couple input parameters. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>Note: There better ways to accomplish this same goal- but this way makes for a great test example.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>In our example we build the expression and test it as an output parameter. Once you have it working as expected, you would then remove it from <em>outputs</em> and&nbsp;place it in your <em>resources</em> block under an actual deployment.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Sample deployment JSON file with the test expression</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "StorageAccountNamePrefix": {
+            "type": "string"
+        },
+        "StorageAccountRegionCode": {
+            "type": "string"
+        }
+    },
+    "variables": {  },
+    "functions": [  ],
+    "resources": [  ],
+    "outputs": {
+        "MyExpressionResult": {
+            "type": "string",
+            "value": "[concat(parameters('StorageAccountNamePrefix'), parameters('StorageAccountRegionCode'))]"
+        }
+    }
+}</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p><strong>Sample PowerShell to run this deployment</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>New-AzureRmResourceGroupDeployment -ResourceGroupName 'TestRG' -TemplateFile .\Desktop\deployment.json -StorageAccountNamePrefix 'mystorage' -StorageAccountRegionCode 'uk'</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p><strong>Resulting expression output on the screen</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1157} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2018/12/deployment-expression-result.png" alt="" class="wp-image-1157"/></figure>
+<!-- /wp:image -->
