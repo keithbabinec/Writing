@@ -1,0 +1,110 @@
+<!-- wp:paragraph -->
+<p><em>Scenario:</em> You have an Azure RM deployment template JSON file. You initiate a deployment with the New-AzureRmResourceGroupDeployment PowerShell cmdlet and pass in some custom parameters. You immediately hit this all too common error: "<em>New-AzureRmResourceGroupDeployment : A parameter cannot be found that matches parameter name '&lt;myParameter&gt;'</em>".</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1171} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/01/parameter-could-not-be-found.png" alt="" class="wp-image-1171"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>I work with ARM templates frequently and have hit this issue myself a number of times. The reason it's noteworthy is that this exact error message has at least 3 different root causes-- making it a little frustrating to troubleshoot. I figured it would be beneficial to outline the reasons for others that come across it.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Cause #1: The Template File isn't found</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The <em>-TemplateFile</em> parameter should point to your Azure RM template JSON file. If the filepath you specified is invalid (for example the file isn't found)-- you will receive the 'parameter cannot be found' error message. Its a weird one since you would normally expect some sort of 'FileNotFound' type of exception. To resolve this one ensure you have specified the correct path/file name.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Cause #2: The Template File has invalid JSON syntax</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>If you specify an Azure RM template JSON file with invalid syntax, it won't be loaded correctly and you will again receive the 'parameter cannot be found' message. Another misleading error message. You would normally expect some sort of 'invalid template' type of error message, but that isn't the case here. To resolve this one make sure your Azure RM template JSON file doesn't have any syntax errors-- think extra braces, missing brackets, commas, quote characters, or improperly escaped expressions, etc. Use an editor with syntax highlighting such as VSCode to quickly highlight those problems. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Cause #3: The Template Parameter wasn't specified in the Template</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>After eliminating the first two problems we can start reviewing the template parameters used (and defined) inside the template file. The third cause here is that you have used a parameter in the template that you haven't defined. Lets look at an example of what that means.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Invalid Template Example</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Whats wrong with this template? This template defines a storage account resource, and uses to parameters: <em>storageAccountName </em>and <em>locationName</em>. However in the parameters section above, we have only defined one of the two parameters. The '<em>locationName</em>' parameter is missing- so running this deployment will (correctly) generate the 'parameter cannot be found' error message.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageAccountName": {
+      "type": "string"
+    }
+  },
+  "variables": { },
+  "functions": [ ],
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "[parameters('storageAccountName')]",
+      "location": "[parameters('locationName')]",
+      "apiVersion": "2018-07-01",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {}
+    }
+  ],
+  "outputs": { }
+}</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Valid Template Example</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Here is the fixed template with the '<em>locationName</em>' parameter now properly defined. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageAccountName": {
+      "type": "string"
+    },
+    "locationName": {
+      "type": "string"
+    }
+  },
+  "variables": { },
+  "functions": [ ],
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "[parameters('storageAccountName')]",
+      "location": "[parameters('locationName')]",
+      "apiVersion": "2018-07-01",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {}
+    }
+  ],
+  "outputs": { }
+}</code></pre>
+<!-- /wp:code -->
