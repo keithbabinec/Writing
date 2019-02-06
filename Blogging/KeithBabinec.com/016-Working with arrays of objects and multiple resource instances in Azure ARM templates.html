@@ -1,0 +1,235 @@
+<!-- wp:paragraph -->
+<p>The 'copy' property is an Azure ARM template feature that allows you to iterate (for each) loop over a resource to create multiple copies of it. You can combine it with an 'array of objects' custom parameter to easily duplicate resources with your supplied values. However there are a couple of snags you might run into so I figured it's worth a write up with an example. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Start with a single instance of the resource</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Before we start passing in arrays of objects its helpful to look at the single-resource template and then we can transform it from there. In our case I'm using a storage account with three template parameters (storageAccountName, storageAccountSku, and storageAccountLocation). It's a simple template with just one resource.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>Tip:&nbsp;test&nbsp;out&nbsp;the&nbsp;deployment&nbsp;template&nbsp;resource&nbsp;as a single instance first (before&nbsp;adding&nbsp;the&nbsp;copy/iteration).&nbsp;This&nbsp;should&nbsp;make&nbsp;it&nbsp;easier&nbsp;to&nbsp;debug&nbsp;and&nbsp;pinpoint&nbsp;if&nbsp;the&nbsp;issue&nbsp;you&nbsp;are&nbsp;having&nbsp;is&nbsp;with&nbsp;the&nbsp;copy&nbsp;code&nbsp;or&nbsp;the&nbsp;template&nbsp;resource definition&nbsp;itself.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageAccountName": {
+      "type": "string"
+    },
+    "storageAccountSku": {
+        "type": "string"
+    },
+    "storageAccountLocation": {
+        "type": "string"
+    }
+  },
+  "variables": { },
+  "functions": [ ],
+  "resources": [
+    {
+      "name": "[parameters('storageAccountName')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2018-07-01",
+      "sku": {
+        "name": "[parameters('storageAccountSku')]"
+      },
+      "kind": "StorageV2",
+      "location": "[parameters('storageAccountLocation')]",
+      "properties": {
+        "supportsHttpsTrafficOnly": true
+      }
+    }
+  ],
+  "outputs": { }
+}</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Add the array parameter and copy property</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>We can make the following changes to our template to enable copy/loop iteration over resources:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>The parameters section: remove individual parameters and replace it with a single 'array' type. </li><li>Add the 'copy' property to resource we want to duplicate.<ol><li>Note that the 'name' property here is an arbitrary string, just give it a friendly name. </li><li>The count property defines how many times we will loop over the resource (the storage account). We want to loop the same number of times as we have total objects in our supplied array parameter.</li></ol></li><li>Add CopyIndex() lookups to the parameter() uses in the resource.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>Here is the resulting template that now supports iteration:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>Note: The toLower() usage below isn't technically required, but is present to show an example of using multiple template functions together.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageAccounts": {
+      "type": "array"
+    }
+  },
+  "variables": { },
+  "functions": [ ],
+  "resources": [
+    {
+      "name": "[toLower(parameters('storageAccounts')[CopyIndex()].Name)]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2018-07-01",
+      "sku": {
+        "name": "[parameters('storageAccounts')[CopyIndex()].Sku]"
+      },
+      "kind": "StorageV2",
+      "location": "[parameters('storageAccounts')[CopyIndex()].Location]",
+      "properties": {
+        "supportsHttpsTrafficOnly": true
+      },
+      "copy": {
+        "name": "storagecopy",
+        "count": "[length(parameters('storageAccounts'))]"
+      }
+    }
+  ],
+  "outputs": { }
+}</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Dynamic resources from PowerShell</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>In the above template you may have noticed that we reference some properties on the objects inside the array. Based on our modifications, the template now expects an array of objects that look like this (expressed as JSON):</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>{
+  "Name": "&lt;value>",
+  "Sku": "&lt;value>",
+  "Location": "&lt;value>"
+}</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>These objects will be used to supply the details on the storage accounts that should be created (one object for each storage account). </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>We could of course supply this data via a literal JSON file. Another approach is to generate this via business logic / code in PowerShell at deployment time. Let's take that route below.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>Warning: If you load JSON data from a file using PowerShell's ConvertFrom-Json cmdlet and then pass that into the deployment, you may experience errors. The reason for this is that the deserialized JSON object from this cmdlet has a structure you may not expect compared to a simple/vanilla class object (ConvertFrom-Json returns a PSCustomObject). I recommend using the Newtonsoft.JSON library to deserialize from a JSON blob to receive a cleaner object.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Define a PowerShell class object/schema</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>We can use PowerShell class objects to define our schema. We will end up creating new instances of these objects at runtime and will pass them into the template parameters. For more about class objects in PowerShell v5 and later, <a href="https://xainey.github.io/2016/powershell-classes-and-concepts/">read here</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>class StorageAccountDetails
+{
+    [String] $Name
+    [String] $Sku
+    [String] $Location
+}</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Construct the custom resource detail objects</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>In your PowerShell application code: make a new collection/list object. Then use some business logic to determine which resources to create and add those details as custom <em>StorageAccountDetails</em> objects to the list. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>At the end of this block we should have a collection populated with one or more objects- each of which contains details for a single storage account resource.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>&lt;#
+This is just a simple example that shows how the objects could be constructed. In the example case we have 3 statically defined storage accounts. All are created in different locations and have unique names, but the same SKU.
+
+You would replace this section with your business logic that determines which resources should be created and the details required to create them. 
+#>
+
+$storageAccounts = New-Object -TypeName System.Collections.Generic.List[StorageAccountDetails]
+
+$account1 = New-Object -TypeName StorageAccountDetails
+$account1.Name = 'deploytest1west'
+$account1.Sku = 'Standard_LRS'
+$account1.Location = 'westus2'
+
+$account2 = New-Object -TypeName StorageAccountDetails
+$account2.Name = 'deploytest2east'
+$account2.Sku = 'Standard_LRS'
+$account2.Location = 'eastus2'
+
+$account3 = New-Object -TypeName StorageAccountDetails
+$account3.Name = 'deploytest3central'
+$account3.Sku = 'Standard_LRS'
+$account3.Location = 'northcentralus'
+
+$storageAccounts.Add($account1)
+$storageAccounts.Add($account2)
+$storageAccounts.Add($account3)</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Deploy the template using PowerShell</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Connect to Azure and fire off the template deployment:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code># login (if you haven't already)
+Login-AzureRmAccount
+
+# create the resource group (if required)
+New-AzureRmResourceGroup -Name 'deploytest-resources' -Location 'westus2'
+
+# run the deployment
+# pass in our $storageAccounts array of objects.
+New-AzureRmResourceGroupDeployment -ResourceGroupName 'deploytest-resources' -TemplateFile '.\test.json' -storageAccounts $storageAccounts</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Deployment results</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>After deployment we should see all 3 of our resources were created. Each with the names, locations, and sku's that were specified in our 'array of objects' parameter.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1178} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/02/deployed-via-copy.png" alt="" class="wp-image-1178"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>We can also see what the input parameter looked like to Azure in the deployment results (parameters tab):</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1179} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/02/parameters-injected.png" alt="" class="wp-image-1179"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p></p>
+<!-- /wp:paragraph -->
