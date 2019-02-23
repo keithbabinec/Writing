@@ -1,0 +1,188 @@
+<!-- wp:paragraph -->
+<p>If you've ever run a database package (.<em>dacpac</em>) publish against a SQL Server or Azure SQL database, chances are good that you have run into the following error when changing the schema for a table that contains data:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>SQL72014: .Net SqlClient Data Provider: Msg 50000, Level 16, State 127, Line 6 Rows were detected. 
+The schema update is terminating because data loss might occur.</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>In this post we will take a look at a common cause for this error and how we can use the '<strong><em>Generate smart defaults when applicable</em></strong>' publishing option to solve it.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Setup a test environment</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The usual cause for this error is that your schema change publish might break the table constraints if data is present in the table. It's easier to visualize this if we trigger the issue on purpose in a test environment. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Create a new empty database in SQL Server or Azure SQL Server. </li><li>Create a new database project in Visual Studio (you can use the free edition for this).</li><li>Create a single table with the following schema. <em>Note that the test1 column allows null</em>.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>CREATE TABLE dbo.MyTable
+(
+    [ID] INT NOT NULL PRIMARY KEY,
+    [Name] NVARCHAR(256) NOT NULL,
+    [Test1] NVARCHAR(128) NULL
+)</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>After creating the SQL Server project we need to publish it and add some data that could violate constraints on a future schema change.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>In Visual Studio, right click on the database project to build it, and then publish it to your target SQL Server or Azure SQL instance.</li><li>Connect to the database engine with SQL Server Management Studio and then insert some test data. <em>Note that some values for the test1 column are null, and some contain real data.</em></li></ol>
+<!-- /wp:list -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>INSERT INTO dbo.MyTable VALUES ( 1, 'Rita', 'test column data' )
+INSERT INTO dbo.MyTable VALUES ( 2, 'Carl', 'more test column data' )
+INSERT INTO dbo.MyTable VALUES ( 3, 'Molly', NULL )
+INSERT INTO dbo.MyTable VALUES ( 4, 'Lee', NULL )
+INSERT INTO dbo.MyTable VALUES ( 5, 'Brad', 'even more test column data' )</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>A query of the data should look something like this:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1199,"width":786,"height":376} -->
+<figure class="wp-block-image is-resized"><img src="https://keithbabinec.files.wordpress.com/2019/02/02-table-with-null-values.png" alt="" class="wp-image-1199" width="786" height="376"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Trigger the error condition</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Let's assume we now have a requirement to change the <strong><em>Test1</em></strong> column from <font color="#191e23"><span style="background-color:rgb(232,234,235);"><b><i>NULL</i></b></span></font> to <font color="#191e23"><span style="background-color:rgb(232,234,235);"><b><i>NOT NULL</i></b></span></font>. If the table is empty, that wouldn't be a problem and the publish would succeed. However since our table is populated with data that breaks the constraint (data cannot be null), deploying that requires special handling.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Start by making the schema change (which also includes a <strong><em>DEFAULT</em></strong> constraint) in the Visual Studio database project:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>CREATE TABLE dbo.MyTable
+(
+    [ID] INT NOT NULL PRIMARY KEY,
+    [Name] NVARCHAR(256) NOT NULL,
+    [Test1] NVARCHAR(128) NOT NULL DEFAULT ''
+)</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>Attempting to run this publish will fail, even though we provided the default constraint:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1203,"width":734,"height":137} -->
+<figure class="wp-block-image is-resized"><img src="https://keithbabinec.files.wordpress.com/2019/02/03-dacpac-failed-publish-with-default-options.png" alt="" class="wp-image-1203" width="734" height="137"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>Clicking on the 'view results' link will show it failed with the 'data loss might occur' error message. Clicking on the 'view script' link provides more context into what happened:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1204,"width":893,"height":531} -->
+<figure class="wp-block-image is-resized"><img src="https://keithbabinec.files.wordpress.com/2019/02/04-dacpac-failed-default-generated-script.png" alt="" class="wp-image-1204" width="893" height="531"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>Some observations from the auto-generated publishing script:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>The 'data loss might occur' error message can be see on line 44. You can see that SQL throws this error if there is ANY data in the table, not just data that would violate the constraint.</li><li>The <strong><em>DEFAULT</em></strong> constraint isn't added until after the ALTER TABLE statement. This means it won't help us with the data already in the table, it would only help for rows inserted in the future.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:heading {"level":3} -->
+<h3>The 'block incremental deployment if data loss might occur' option</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Attempting to fix the issue by unchecking the '<em>block incremental deployment if data loss might occur</em>' publish option doesn't fix the problem for this specific scenario.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1205,"width":522,"height":411} -->
+<figure class="wp-block-image is-resized"><img src="https://keithbabinec.files.wordpress.com/2019/02/05-allow-dataloss-option.png" alt="" class="wp-image-1205" width="522" height="411"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>The reason for this is that some rows of data in our table violate the constraint and this causes the <strong><em>ALTER&nbsp;TABLE</em></strong> statement to fail. Run the publish and you can see exactly that:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>SQL72014: .Net SqlClient Data Provider: Msg 515, Level 16, State 2, Line 1 
+Cannot insert the value NULL into column 'Test1', table 'DatabaseDeployTest.dbo.MyTable'; 
+column does not allow nulls. UPDATE fails.</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p><strong><u>IMPORTANT NOTE</u>: </strong><em>If there is existing data in the table but no rows will violate the newly added constraint, then unchecking the 'block incremental deployment if data loss might occur' option will result in a successful publish.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Solution: Generate Smart Defaults</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>If some of the data in the table does violate the new schema constraints (as in our example), then we can use the '<em>Generate smart defaults, when applicable</em>' option-- it isn't checked by default we so we need to enable this publishing option:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1206,"width":496,"height":352} -->
+<figure class="wp-block-image is-resized"><img src="https://keithbabinec.files.wordpress.com/2019/02/06-smart-defaults-checked.png" alt="" class="wp-image-1206" width="496" height="352"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>If we click on the 'Generate Script' button after checking smart defaults, we can get a non-destructive preview of what the script will do:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1207,"width":685,"height":350} -->
+<figure class="wp-block-image is-resized"><img src="https://keithbabinec.files.wordpress.com/2019/02/07-generate-scripts-button.png" alt="" class="wp-image-1207" width="685" height="350"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>Here is the publish script preview. Notice that before the <strong><em>ALTER TABLE</em></strong> statement, it runs an <strong><em>UPDATE</em></strong> statement that applies a safe default (empty string) to any values in that table that violate the <strong><em>NOT NULL</em></strong> constraint.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1208,"width":617,"height":443} -->
+<figure class="wp-block-image is-resized"><img src="https://keithbabinec.files.wordpress.com/2019/02/08-smart-defaults-generated-script.png" alt="" class="wp-image-1208" width="617" height="443"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>Running the publish again with this option enabled now results in a successful publish:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1209,"width":692,"height":138} -->
+<figure class="wp-block-image is-resized"><img src="https://keithbabinec.files.wordpress.com/2019/02/09-successful-publish-in-vs-window.png" alt="" class="wp-image-1209" width="692" height="138"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>Re-running the SELECT query on the table now shows our data has had the safe default applied for us, and the column definition has indeed changed from <strong><em>NULL</em></strong> to <strong><em>NOT NULL</em></strong>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1210,"width":744,"height":340} -->
+<figure class="wp-block-image is-resized"><img src="https://keithbabinec.files.wordpress.com/2019/02/10-successful-publish-row-results.png" alt="" class="wp-image-1210" width="744" height="340"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>What are the smart defaults for each datatype?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>You can reference the following table for the defaults for each type. From source: <a href="https://stackoverflow.com/a/19433730">https://stackoverflow.com/a/19433730</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:table -->
+<table class="wp-block-table"><tbody><tr><td><strong><em>SQL Datatype</em></strong></td><td><strong><em>Smart Default Value</em></strong></td></tr><tr><td>bigint</td><td>0</td></tr><tr><td>binary</td><td>0x00</td></tr><tr><td>bit</td><td>0</td></tr><tr><td>char</td><td>&lt;empty string&gt;</td></tr><tr><td>date</td><td>1900-01-01</td></tr><tr><td>datetime</td><td>1900-01-01 00:00:00.000</td></tr><tr><td>datetime2</td><td>1900-01-01 00:00:00.0000000</td></tr><tr><td>datetimeoffset</td><td>1900-01-01 00:00:00.0000000 +00:00</td></tr><tr><td>decimal</td><td>0</td></tr><tr><td>float</td><td>0</td></tr><tr><td>hierarchyid</td><td>&lt;not available&gt;</td></tr><tr><td>image</td><td>0x</td></tr><tr><td>int</td><td>0</td></tr><tr><td>money</td><td>0.00</td></tr><tr><td>nchar</td><td>&lt;empty string&gt;</td></tr><tr><td>ntext</td><td>&lt;empty string&gt;</td></tr><tr><td>numeric</td><td>0</td></tr><tr><td>nvarchar</td><td>&lt;empty string&gt;</td></tr><tr><td>real</td><td>0</td></tr><tr><td>smalldatetime</td><td>1900-01-01 00:00:00</td></tr><tr><td>smallint</td><td>0</td></tr><tr><td>smallmoney</td><td>0.00</td></tr><tr><td>sql_variant</td><td>&lt;not available&gt;</td></tr><tr><td>text</td><td>&lt;empty string&gt;</td></tr><tr><td>time</td><td>00:00:00.0000000</td></tr><tr><td>timestamp</td><td>&lt;not available&gt;</td></tr><tr><td>tinyint</td><td>0</td></tr><tr><td>uniqueidentifier</td><td>00000000-0000-0000-0000-000000000000</td></tr><tr><td>varbinary</td><td>0x</td></tr><tr><td>varchar</td><td>&lt;empty string&gt;</td></tr><tr><td>xml</td><td>&lt;empty string&gt;</td></tr></tbody></table>
+<!-- /wp:table -->
