@@ -1,0 +1,17 @@
+A couple years ago I wrote a PowerShell module starter kit (<a href="http://keithbabinec.com/2017/08/13/powershell-script-module-starter-kit/">here</a>). The goal was to provide an example for organizing a module using best practices and provide a live repository you could clone and play around with.
+
+I've taken that starter kit module and updated it for 2019. Incorporating some new best practices and new usage patterns that I find helpful. Head over to the GitHub link to check it out!
+
+Project: <a href="https://github.com/keithbabinec/PowerShellModuleStarterKit">https://github.com/keithbabinec/PowerShellModuleStarterKit</a>.
+<h3>What's new in this release?</h3>
+<ol>
+ 	<li>Added examples to store and reference module-scoped constants.</li>
+ 	<li>Added examples to read/write to a module-scoped cache (to store data across function calls).</li>
+ 	<li>Added examples for exporting V5 classes to use outside of module scope.</li>
+ 	<li>Added examples for packaging and referencing non-PowerShell module file resources (things like .json documents).</li>
+ 	<li>Added examples for referencing and using external libraries (ex: <em>Newtonsoft.JSON</em>).</li>
+ 	<li>Switched unit tests to use <em>InModuleScope</em> for private function testing.</li>
+ 	<li>Switched unit tests to use module loading by name, instead of module manifest relative path.</li>
+ 	<li>Updated documentation for how to load the module and run the unit tests.</li>
+ 	<li>Reorganized project folder structure (particularly around tests).</li>
+</ol>
