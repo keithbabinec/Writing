@@ -1,0 +1,31 @@
+<!-- wp:paragraph -->
+<p>Building scalable systems for the cloud involves leveraging unique design patterns specific to cloud services. In Bill Wilder's book, <a href="https://www.amazon.com/Cloud-Architecture-Patterns-Using-Microsoft-ebook/dp/B009G8PYY4">Cloud Architecture Patterns: Using Microsoft Azure</a>, he walks through these patterns in detail with practical examples for Microsoft Azure. Although this book is now several years old, most of the patterns still hold up today.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:paragraph -->
+<p>Each chapter in the book covers either a primer, or a pattern. The primer chapters focus on systems design basics which include topics reviewing <strong><em>scalability</em></strong>, <strong><em>eventual consistency</em></strong>, <strong><em>multi-tenancy</em></strong>, and <strong><em>network latency</em></strong>. The pattern chapters focused on the actual design patterns. In the book Wilder covers the following:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>Horizontal Scaling for Compute Pattern</li><li>Queue-Centric Workflow Pattern</li><li>Auto-Scaling Pattern</li><li>Map-Reduce Pattern</li><li>Database Sharding Pattern</li><li>Busy Signal Pattern</li><li>Node Failure Pattern</li><li>Colocate Pattern</li><li>Valet Key Pattern</li><li>CDN Pattern</li><li>Multi-Site Deployment Pattern</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>For those working with cloud services on a daily basis: most of these will already feel familiar or obvious, but you will likely still pick up a few tips in several chapters. The definitions help formalize the patterns and when/why we use them. Several examples refer to Azure specific implementations, but the principals can equally apply to AWS or GCP. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I did appreciate the book's focus on building <strong><em>cloud native applications</em></strong>. Wilder explains that these applications should:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>Leverage cloud platform services for reliable and scalable infrastructure (let the platform do the hard stuff).</li><li>Use non-blocking asynchronous communication.</li><li>Use automated, elastic, horizontal scaling (without downtime or UX degradation).</li><li>Handle transient events without UX degradation.</li><li>Handle node failures without downtime.</li><li>Use geographic distribution to minimize latency.</li><li>Allow the upgrade of code without downtime.</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>Cloud services change rapidly, so its not surprising that a few things have changed since the release of the book. First example is that the legacy Azure Cloud Service virtual machines referred to frequently are no longer recommended. Azure App Services, Functions, or other modern compute options would be preferred. Second example would be Microservices. Can't blame the author here either as that pattern/trend hadn't gained traction yet. Despite some of the now dated references I still picked up a few tips  and enjoyed the read. </p>
+<!-- /wp:paragraph -->
