@@ -1,0 +1,47 @@
+<!-- wp:paragraph -->
+<p>Windows PowerShell's <a href="https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-6">execution policy</a> is well known feature that helps prevent users from accidentally running malicious scripts. I hit an interesting situation recently where <strong><em>Get-ExecutionPolicy</em></strong> showed that I was allowed to run scripts, but in practice I still couldn't execute scripts from a .NET application's hosted runspace. What was the problem? The execution policy handling settings differed across x64 and x86 processes. Since this problem isn't covered in the official documentation I figured it deserved a quick write-up.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Different execution policies for x86 and x64</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>On a 64-bit Windows computer open a Windows PowerShell prompt (the default x64 version), and then open the x86 version. Run <strong><em>Get-ExecutionPolicy -List</em></strong> in each session and view the results. Depending on how your machine was configured you may see different results for each session. Here is an example on one of my machines where the results differ:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1278} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/04/x64-policy.png" alt="" class="wp-image-1278"/><figcaption>Windows PowerShell x64 Session Policy<br></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":1279} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/04/x86-policy.png" alt="" class="wp-image-1279"/><figcaption>Windows PowerShell x86 Session Policy (same computer, different policy for x86)<br></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Why is this happening?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Registry keys can be 32-bit, 64-bit, or shared (<a href="https://docs.microsoft.com/en-us/windows/desktop/sysinfo/32-bit-and-64-bit-application-data-in-the-registry">see here</a>) depending on how the process handles this. In Windows PowerShell some of the Execution Policy settings are stored in both 32-bit and 64-bit sections-- resulting in two different settings areas. You can verify this by running a tool like Sysinternals <a href="https://docs.microsoft.com/en-us/sysinternals/downloads/procmon">Process Monitor</a> and then running execution policy commands.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1280} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/04/x64-query-policy.png" alt="" class="wp-image-1280"/><figcaption>An x64 PowerShell prompt querying execution policy settings against the x64 registry keys.</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":1281} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/04/x86-query.png" alt="" class="wp-image-1281"/><figcaption>An x86 PowerShell prompt querying execution policy settings against the x86 registry keys. See the highlighted WOW6432Node path.</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Tips for handling the execution policy</h3>
+<!-- /wp:heading -->
+
+<!-- wp:list -->
+<ul><li>Use Group Policy to configure the execution policy settings. This will enforce a consistent experience across all machines.</li><li>If you can't use group policy-- remember to run your <strong><em>Set-ExecutionPolicy</em></strong> command in both x64 and x86 versions of PowerShell (if you use both).</li><li>If you host a runspace in a .NET application: remember that the AnyCPU build target will likely set your application as x86, which in turn would launch the x86 specific PowerShell runspace. If you need x64 PowerShell then be sure to set the platform target to x64. </li></ul>
+<!-- /wp:list -->
