@@ -1,5 +1,5 @@
 <!-- wp:paragraph -->
-<p>Windows PowerShell's <a href="https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-6">execution policy</a> is well known feature that helps prevent users from accidentally running malicious scripts. I hit an interesting situation recently where <strong><em>Get-ExecutionPolicy</em></strong> showed that I was allowed to run scripts, but in practice I still couldn't execute scripts from a .NET application's hosted runspace. What was the problem? The execution policy handling settings differed across x64 and x86 processes. Since this problem isn't covered in the official documentation I figured it deserved a quick write-up.</p>
+<p>Windows PowerShell's <a href="https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-6">execution policy</a> is well known feature that helps prevent users from accidentally running malicious scripts. I hit an interesting situation recently where <strong><em>Get-ExecutionPolicy</em></strong> showed that I was allowed to run scripts, but in practice I still couldn't execute scripts from a .NET application's hosted runspace. What was the problem? The execution policy settings differed across x64 and x86 processes. Since this problem isn't covered in the official documentation I figured it deserved a quick write-up.</p>
 <!-- /wp:paragraph -->
 
 <!-- wp:more -->
@@ -27,7 +27,11 @@
 <!-- /wp:heading -->
 
 <!-- wp:paragraph -->
-<p>Registry keys can be 32-bit, 64-bit, or shared (<a href="https://docs.microsoft.com/en-us/windows/desktop/sysinfo/32-bit-and-64-bit-application-data-in-the-registry">see here</a>) depending on how the process handles this. In Windows PowerShell some of the Execution Policy settings are stored in both 32-bit and 64-bit sections-- resulting in two different settings areas. You can verify this by running a tool like Sysinternals <a href="https://docs.microsoft.com/en-us/sysinternals/downloads/procmon">Process Monitor</a> and then running execution policy commands.</p>
+<p>This behavior can be explained when looking at the Windows registry. On a 64-bit Windows operating system, parts of the registry are stored separately for keys used by 32-bit applications and 64-bit applications (however there are also shared keys -- read more <a href="https://docs.microsoft.com/en-us/windows/desktop/SysInfo/32-bit-and-64-bit-application-data-in-the-registry">here</a>). This allows applications to have different stored settings that may apply specifically to one platform target.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Windows PowerShell uses platform specific (32 bit or 64 bit) registry keys instead of shared keys for some of the execution policy settings. You can verify this by running a tool like Sysinternals <a href="https://docs.microsoft.com/en-us/sysinternals/downloads/procmon">Process Monitor</a> and then running execution policy commands.</p>
 <!-- /wp:paragraph -->
 
 <!-- wp:image {"id":1280} -->
