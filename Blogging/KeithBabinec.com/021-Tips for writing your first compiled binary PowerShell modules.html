@@ -1,0 +1,268 @@
+<!-- wp:paragraph -->
+<p>I recently completed work on a my first compiled binary PowerShell module-- these are modules built with C#/.Net code instead of PowerShell code. A few module development basics like project setup, handling help files, and writing unit tests did take some work to figure out. In this article I provide some tips for how to handle these common scenarios to help you get started on new projects.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading {"level":3} -->
+<h3>View the full example code</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The abbreviated examples referenced in this post are from Archivial, an open source backup software project I'm working on. The full source can be viewed here: <a href="https://github.com/keithbabinec/Archivial">https://github.com/keithbabinec/Archivial</a>. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Project setup basics</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Compiled modules start with a class library project. Create a new class library project in Visual Studio and add a nuget reference to <em>Microsoft.PowerShell.5.ReferenceAssemblies</em> (this assumes you are targeting <strong>PowerShell 5.1</strong> and not <strong>PowerShell Core</strong>). </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Your module class library will contain one or more cmdlets. Which in this case is a class that derives from the <em>System.Management.Automation.Cmdlet</em> or <em>System.Management.Automation.PSCmdlet</em> base class. This <a href="https://docs.microsoft.com/en-us/powershell/developer/cmdlet/cmdlet-overview">guide</a> has a pretty good overview with examples. You will end up making one class file per cmdlet.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Module manifest setup</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Create your <a href="https://docs.microsoft.com/en-us/powershell/developer/module/how-to-write-a-powershell-module-manifest">module manifest file</a> somewhere in the Visual Studio project and set the file properties to <em>copy to output</em> automatically-- this just helps so you don't forget to package the .psd1 manifest file with your project output.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The main entry point (<em>the root module</em>) defined in the manifest will be the name of the class library project's output DLL. As long as the module manifest points to the correct DLL that contains your cmdlets, the import-module should load correctly. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1295,"align":"center"} -->
+<div class="wp-block-image"><figure class="aligncenter"><img src="https://keithbabinec.files.wordpress.com/2019/04/compiled-module-manifest.png" alt="" class="wp-image-1295"/><figcaption>Example class library with a module manifest file</figcaption></figure></div>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":1294,"align":"center"} -->
+<div class="wp-block-image"><figure class="aligncenter"><img src="https://keithbabinec.files.wordpress.com/2019/04/compiled-module-root.png" alt="" class="wp-image-1294"/><figcaption>Example manifest file (partial contents)<br></figcaption></figure></div>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>You can load your module directly by calling import-module against the DLL output from your project, the manifest file (.psd1), or by name -- if you have placed that path into your PSModulePath environment variable.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1309} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/04/compiled-module-load-example.png" alt="" class="wp-image-1309"/><figcaption>Example: Import-Module against your module output binary.<br></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>A compiled cmdlet example</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The following is the shell of an example cmdlet from Archivial called <em>Add-ArchivialLocalSource</em>. I provide this example because it has some helpful modifications over some of the basic examples you might find on other docs:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>The class inherits from a base cmdlet class to share common code (for example database connections, custom logging, etc).</li><li>The parameters are public properties that have the same validation attributes used in regular PowerShell functions.</li><li>The class has two constructors. The first (default/empty) constructor is for when the command is called in normal fashion from PowerShell. The second constructor allows for dependency injection for unit testing.</li><li>The class has help documentation defined inline (see later section in this post for more information).</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp"} -->
+<pre class="wp-block-syntaxhighlighter-code brush: csharp; notranslate">/// &lt;summary>
+///   &lt;para type="synopsis">Adds a local folder to the Archivial backup folders list.&lt;/para>
+///   &lt;para type="description">A Local Source is a folder on your computer (or a directly attached external drive) that you would like Archivial to backup and automatically monitor for new and updated files.&lt;/para>
+///   &lt;para type="description">The priority of the source determines how frequently it will be scanned for changes. The automated scanning schedule for Low priority sources is once every 48 hours. Medium priority sources are scanned every 12 hours. High priority sources are scanned every hour.&lt;/para>
+///   &lt;para type="description">The optional MatchFilter parameter allows you to narrow the scope of files in the folder to be monitored. For example, by file extension. Any windows file path wildcard expression will be accepted here.&lt;/para>
+/// &lt;/summary>
+/// &lt;example>
+///   &lt;code>C:\> Add-ArchivialLocalSource -FolderPath "C:\users\test\documents" -Priority High -Revisions 3&lt;/code>
+///   &lt;para>Adds the specified folder to backup with high priority, and to retain up to 3 revisions of file history.&lt;/para>
+///   &lt;para>&lt;/para>
+/// &lt;/example>
+/// &lt;example>
+///   &lt;code>C:\> Add-ArchivialLocalSource -FolderPath "C:\users\test\music\playlists" -Priority High -Revisions 3 -MatchFilter *.m3u&lt;/code>
+///   &lt;para>Adds the specified folder to backup with high priority, but only files that match the wildcard extension filter.&lt;/para>
+///   &lt;para>&lt;/para>
+/// &lt;/example>
+[Cmdlet(VerbsCommon.Add, "ArchivialLocalSource")]
+public class AddArchivialLocalSourceCommand : BaseArchivialCmdlet
+{
+  /// &lt;summary>
+  ///   &lt;para type="description">Specify the folder path that should be backed up and monitored.&lt;/para>
+  /// &lt;/summary>
+  [Parameter(Mandatory = true)]
+  [ValidateNotNullOrEmpty]
+  public string FolderPath { get; set; }
+  
+  /// &lt;summary>
+  ///   &lt;para type="description">Specify the priority of this source (which determines how frequently it will be scanned for changes).&lt;/para>
+  /// &lt;/summary>
+  [Parameter(Mandatory = true)]
+  [ValidateSet("Low", "Medium", "High")]
+  public string Priority { get; set; }
+  
+  /// &lt;summary>
+  ///   &lt;para type="description">Specify the maximum number of revisions to store in the cloud for the files in this folder.&lt;/para>
+  /// &lt;/summary>
+  [Parameter(Mandatory = true)]
+  [ValidateRange(1, int.MaxValue)]
+  public int Revisions { get; set; }
+  
+  /// &lt;summary>
+  ///   &lt;para type="description">Optionally specify a wildcard expression to filter the files to be backed up or monitored.&lt;/para>
+  /// &lt;/summary>
+  [Parameter(Mandatory = false)]
+  [ValidateNotNullOrEmpty]
+  public string MatchFilter { get; set; }
+  
+  /// &lt;summary>
+  /// Default constructor.
+  /// &lt;/summary>
+  public AddArchivialLocalSourceCommand() : base() { }
+  
+  /// &lt;summary>
+  /// A secondary constructor for dependency injection.
+  /// &lt;/summary>
+  /// &lt;param name="database">&lt;/param>
+  public AddArchivialLocalSourceCommand(IClientDatabase database) : base(database) { }
+  
+  /// &lt;summary>
+  /// Cmdlet invocation.
+  /// &lt;/summary>
+  protected override void ProcessRecord()
+  {
+    // main invoke
+    // add implementation code here
+  }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Generate and deploy module help files</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Compiled binary modules require an xml-based help file which is very tedious to write or edit by hand. Thankfully there are some tools out there that can generate this file automatically for you based on your inline XML code comments. I highly recommend <a href="https://github.com/red-gate/XmlDoc2CmdletDoc">XmlDoc2CmdletDoc</a> to accomplish this task. The process works like this:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>Set your VS project settings to output a comment XML file.</li><li>Add the <strong><em>XmlDoc2Cmdlet</em></strong> nuget to your project.</li><li>Add XML code comments to your cmdlets according to the XmlDoc2CmdletDoc instructions.</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>On project build the XmlDoc2Cmdlet automatically generates the required module help file (*.dll-Help.xml). When you distribute your module just make sure the help file is in the same folder as your other module binaries. When someone imports your module, this help file will automatically be loaded and then they can view cmdlet help.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1307} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/04/compiled-module-help-files-2.png" alt="" class="wp-image-1307"/><figcaption>Example: XmlDoc2Cmdlet auto-generated helpfile in module output folder<br></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Select a test framework / methodology</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>There are multiple ways to test a binary module. First start by making a choice if you want to test your module using PowerShell code and the Pester framework or if you want to test using .NET code and a test framework like MSTest or NUnit. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Testing using PowerShell code is nice because you can test in the language that your module end-users will be using, and can easily handle good end-to-end scenarios. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Testing in a .NET is nice because you can get automatic test discovery / handling in Visual Studio and an Azure DevOps pipeline without custom build scripts. It also provides a way to invoke cmdlets directly without setting up a PowerShell pipeline/runspace. I ended up testing in .NET for Archivial. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Unit testing cmdlets in .NET</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>There were two types of tests that I found helpful for cmdlets in .NET. The first type of test is to ensure that the cmdlet parameters have the correct attributes assigned. These are simple pinning tests to ensure that you don't accidentally remove or change one. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Example 1: Parameter attribute pinning tests</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp"} -->
+<pre class="wp-block-syntaxhighlighter-code brush: csharp; notranslate">public class TypeHelpers
+{
+  public static bool CmdletParameterHasAttribute(Type cmdletType, string cmdletProperty, Type attribute)
+  {
+    var property = cmdletType.GetProperty(cmdletProperty);
+    return Attribute.IsDefined(property, attribute);
+  }
+}
+
+[TestClass]
+public class AddArchivialLocalSourceCommandTests
+{
+  [TestMethod]
+  public void AddArchivialLocalSourceCommand_FolderPathParameter_HasRequiredAttributes()
+  {
+    Assert.IsTrue(
+      TypeHelpers.CmdletParameterHasAttribute(
+        typeof(AddArchivialLocalSourceCommand),
+        nameof(AddArchivialLocalSourceCommand.FolderPath),
+        typeof(ParameterAttribute))
+    );
+
+    Assert.IsTrue(
+      TypeHelpers.CmdletParameterHasAttribute(
+        typeof(AddArchivialLocalSourceCommand),
+        nameof(AddArchivialLocalSourceCommand.FolderPath),
+        typeof(ValidateNotNullOrEmptyAttribute))
+    );
+  }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>The second type of tests would concern the actual functionality of the cmdlet. To invoke a cmdlet inside .NET code, you create a new instance of your cmdlet class and then call .Invoke() directly on the object. In the example below I leverage that secondary constructor for dependency injection to support mocked dependencies that are helpful for unit testing. I highly recommend the <a href="https://github.com/moq/moq4">Moq framework</a> for test mocks.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Example 2: Cmdlet.Invoke() functionality test with mocked dependency injection</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp"} -->
+<pre class="wp-block-syntaxhighlighter-code brush: csharp; notranslate">[TestMethod]
+public void AddArchivialLocalSourceCommand_CanSaveNewLocalSource()
+{
+  // setup dependencies
+  
+  var mockedDb = new Mock&lt;IClientDatabase>();
+  
+  LocalSourceLocation databaseCommitedObject = null;
+  
+  mockedDb.Setup(x => x.GetSourceLocationsAsync()).ReturnsAsync(new SourceLocations());
+  
+  mockedDb.Setup(x => x.SetSourceLocationAsync(It.IsAny&lt;LocalSourceLocation>()))
+    .Returns(Task.CompletedTask)
+    .Callback&lt;LocalSourceLocation>(x => databaseCommitedObject = x);
+  
+  // setup cmdlet with parameters
+  
+  var command = new AddArchivialLocalSourceCommand(mockedDb.Object)
+  {
+    FolderPath = "C:\\folder\\path",
+    Priority = "Low",
+    Revisions = 1,
+    MatchFilter = "*"
+  };
+  
+  // cmdlet invocation
+  
+  var result = command.Invoke().GetEnumerator().MoveNext();
+  
+  // verify results
+  
+  mockedDb.Verify(x => x.SetSourceLocationAsync(It.IsAny&lt;LocalSourceLocation>()), Times.Once);
+  
+  Assert.IsNotNull(databaseCommitedObject);
+  Assert.AreEqual("C:\\folder\\path", databaseCommitedObject.Path);
+  Assert.AreEqual(FileBackupPriority.Low, databaseCommitedObject.Priority);
+  Assert.AreEqual(1, databaseCommitedObject.RevisionCount);
+  Assert.AreEqual("*", databaseCommitedObject.FileMatchFilter);
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
