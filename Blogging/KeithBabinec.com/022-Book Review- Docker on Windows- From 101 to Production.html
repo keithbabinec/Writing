@@ -1,0 +1,79 @@
+<!-- wp:paragraph -->
+<p>Docker is a powerful container platform originally designed for Linux, but quickly became popular enough to receive native support on Windows. I first read Docker training material that took more of a Linux-first approach and loved what I saw. However my day-to-day work is still typically Microsoft/Azure stack so I was looking for a good book that takes on the nuances of working with Docker in a Windows or Azure environment.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I found <a href="https://www.amazon.com/Docker-Windows-101-Production-ebook/dp/B0711Y4J9K/">Docker on Windows: From 101 to Production with Docker on Windows</a> by Elton Stoneman to be really helpful for that purpose. This post is my quick review of the 1st edition. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:paragraph -->
+<p><em>Note: The second edition of this book is now available (</em><a href="https://www.amazon.com/Docker-Windows-101-production-2nd/dp/1789617375"><em>link</em></a><em>) -- it was published around the time I was reading the 1st edition and I just missed it. The thoughts in this post reflect the 1st edition.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>About the book</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><em>Stoneman</em> covers quite a few Docker concepts in the book, but I found the most helpful information to be focused in these areas:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>How to package and run docker containers on Windows platforms.</li><li>How to convert an existing .NET Framework-stack web application into a containerized solution.</li><li>The differences in working with <strong><em>.NET Framework </em></strong>and <strong><em>.NET Core </em></strong>based application containers.</li><li>What makes an application a good Docker citizen? Or how to design with a container-first approach.</li><li>How to create distributed applications using <strong><em>Docker Swarm</em></strong>.</li><li>Continuous Integration and Continuous Deployment with Docker (using containers as your pipeline).</li><li>Docker platform/container security.</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>The following is some additional context around my favorite sections.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Good Docker Citizens</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The book helps to explain what makes a good Docker citizen. The key takeaway is that the application makes very few assumptions about the system its running on, and only uses the basic functionality that all operating systems support (file system, networking, environment variables, and the console). </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Your containers should only do one thing (ex: <em>microservice</em> model). One process running in the container, performing one application specific task. Application settings should be stored in environment variables. Application logs and errors are expected on the console output and error streams. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>In .NET you can meet these requires by running a console application. This is why <strong><em>.NET Core </em></strong>applications run as console applications, so they can be easily be containerized. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Distributed Docker Applications</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The chapters on <strong><em>Docker Compose</em></strong> and <strong><em>Docker Swarm </em></strong>were really helpful because they walk through building a distributed application. For example how to organize your <strong><em>Docker compose file</em></strong> and working with multiple environments (Dev, PPE, Prod, etc). How to work with <strong><em>Docker stacks</em></strong>. How to manage application code updates and deployments. The material on networking and service discovery was key to understanding how to design an application with Docker in mind.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>He also briefly covers other offerings available beyond Docker Swarm. For example describing the cloud offerings from <strong><em>AWS</em></strong>, <strong><em>Azure</em></strong>, and <strong><em>GCP</em></strong> and their container orchestration options.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Docker Isolation and Security</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The book provides easy-to-understand descriptions of how Docker container isolation works in Windows and how it differs from Linux. Specifically under normal isolation and Hyper-V (extended isolation) modes. He covers user process / execution context as well, which leads to some great recommendations for securing your containers.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>There are also sections completely devoted to handling Windows Updates-- both for the containers and the hosts, and how to perform downtime-free security updates in a distributed application. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Conclusion</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><span style="text-decoration:underline;"><a href="https://www.amazon.com/Docker-Windows-101-Production-ebook/dp/B0711Y4J9K/">Docker on Windows: From 101 to Production</a></span> is a fantastic read for anyone looking to run Docker in a Windows or .NET stack environment. I appreciate how much attention was given towards the benefits of .NET core and the great information for building distributed applications. </p>
+<!-- /wp:paragraph -->
