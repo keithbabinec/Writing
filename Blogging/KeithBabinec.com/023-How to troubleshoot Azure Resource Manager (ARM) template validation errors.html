@@ -1,0 +1,174 @@
+<!-- wp:paragraph -->
+<p>Deploying Azure Resource Manager (ARM) templates with the Azure PowerShell command <em><strong>New-AzureRmResourceGroupDeployment</strong></em><strong> </strong>can fail for a variety of reasons. One of the more confusing situations can occur when handling template validation errors (<strong>Code=InvalidTemplateDeployment</strong>). This is because sometimes additional context is missing from the Exception and you have to lookup more information into order to troubleshoot the issue. In this post we will take a closer look at this particular error and how to resolve it. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:paragraph -->
+<p>First, remember that there is an important distinction between a template validation error, and a template deployment error. A <strong><em>template validation error</em></strong> means there is a problem with the syntax or layout of your deployment template-- this prevents the deployment from starting. A <strong><em>template deployment error</em></strong> means that your template syntax has been approved, but an error has occurred while provisioning the resources. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>TIP: If a template validation error occurs, no deployment record will be available in the history of the resource group deployments-- because the deployment never actually started.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Reproduce the problem</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Let's start off with a bad Azure Resource Manager (ARM) template-- one that I know has a syntax error in it. In this case, a required property is missing. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Example invalid template:</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code brush: jscript; notranslate">{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": { },
+  "variables": { },
+  "functions": [ ],
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "storagetest55123",
+      "apiVersion": "2018-02-01",
+      "location": "westus2",
+      "properties": {
+        "supportsHttpsTrafficOnly": true
+      }
+    }
+  ],
+  "outputs": { }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>We then initiate the deployment in PowerShell:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code brush: powershell; notranslate">$ErrorActionPreference = 'Stop'
+
+# login (if you haven't already)
+Login-AzureRmAccount
+
+# create the resource group (if you haven't already)
+New-AzureRmResourceGroup -Name 'deploytest-resources' -Location 'westus2'
+
+# run the deployment
+New-AzureRmResourceGroupDeployment -ResourceGroupName 'deploytest-resources' -TemplateFile '.\template-validation-error.json'</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>After running the above commands, the validation fails and the template is never deployed. We receive this error message:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code -->
+<pre class="wp-block-syntaxhighlighter-code brush: plain; notranslate">New-AzureRmResourceGroupDeployment : 12:16:21 PM - Error: Code=InvalidTemplateDeployment; Message=The template deployment
+'&lt;deployment name>' is not valid according to the validation procedure. The tracking id is 'be6813f8-1f8f-4134-bc88-611765ed6cf8'. See
+inner errors for details. Please see https://aka.ms/arm-deploy for usage details.
+At line:1 char:1
++ New-AzureRmResourceGroupDeployment -ResourceGroupName 'deploytest-res ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [New-AzureRmResourceGroupDeployment], Exception
+    + FullyQualifiedErrorId : Microsoft.Azure.Commands.ResourceManager.Cmdlets.Implementation.NewAzureResourceGroupDeploymentCmdlet</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:image {"id":1343} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/05/validation-error.png" alt="" class="wp-image-1343"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>The problem with the above error message is that it tells us there is a validation error, but it doesn't tell us which resource caused the problem, or the specific property or syntax error that caused the failure. It does however leave behind a <strong><em>CorrelationID</em></strong>, which can be used to look up more information.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Part of this issue can be blamed on our Execution Policy handling. The New-AzureRmResourceGroupDeployment command will normally write multiple error records in a failure situation like this one. Some of those errors may contain the additional context we are looking for. However since we have enforced 'Stop' as the error action, this is the single error that bubbles up-- missing important context we need to resolve the issue.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The following are some solutions for how to grab the additional context regardless of your error handling / execution policy settings.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Solution 1: View additional context in the Azure Portal</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Click on the notifications bell icon in the top right of the Azure Portal, and then click on 'More events in the activity log'.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1338} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/05/validation-error-lookup-ui-1.png" alt="" class="wp-image-1338"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>Find your recent deployment validation error in the history, then click on it.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1339} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/05/validation-error-lookup-ui-2.png" alt="" class="wp-image-1339"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>Under the properties section of the document, you can see the request result, including a status message. That status message contains the specific context we were looking for-- which is the fact that the 'accountType' field is missing from the storage account in my template. We could then go fix the ARM template by adding the missing field.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1340} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/05/validation-error-lookup-ui-3.png" alt="" class="wp-image-1340"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Solution 2: View additional context in Azure PowerShell</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>You can do the same thing in PowerShell by running the following command to retrieve that activity log entry by correlation ID. Substitute the GUID in this command with the one provided to you in the error message you received. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code brush: powershell; notranslate">Get-AzureRmLog -CorrelationId 'be6813f8-1f8f-4134-bc88-611765ed6cf8'</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:image {"id":1341} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/05/validation-error-lookup-ps-1.png" alt="" class="wp-image-1341"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p><em>TIP: Calling Get-AzureRmLog with your correlation ID immediately after the deployment has failed may return no results. It takes a few seconds for the records to be ingested/available, so you may need smart retry functionality if collecting this error from within automated deployment scripts.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Solution 3: Run the deployment manually with the -Debug switch</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Yet another option to try is to get the error in real time by stepping through the Azure command in debug mode. This prompts at several points along the way and provides extra verbose output, including the response back from Azure about your template validation result. Start the command and keep hitting continue until you reach the web response.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code brush: powershell; notranslate"># runs the deployment with debugging enabled
+New-AzureRmResourceGroupDeployment -ResourceGroupName 'deploytest-resources' -TemplateFile '.\template-validation-error.json' -Debug</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:image {"id":1342} -->
+<figure class="wp-block-image"><img src="https://keithbabinec.files.wordpress.com/2019/05/validation-error-lookup-debug.png" alt="" class="wp-image-1342"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Template API reference</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>One final tip to avoid template syntax and validation errors is to always consult the Azure docs ARM template API reference (<a href="https://docs.microsoft.com/en-us/azure/templates/">found here</a>). It contains detailed schema information about each ARM template resource, outlines which properties are required or optional, and provides this information for each API revision. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>In our examples above we were trying to deploy a storage account using API version 2018-02-01. By consulting that resource's <a href="https://docs.microsoft.com/en-us/azure/templates/microsoft.storage/2018-02-01/storageaccounts">API reference</a>, we can tell exactly what we did wrong with our schema.</p>
+<!-- /wp:paragraph -->
