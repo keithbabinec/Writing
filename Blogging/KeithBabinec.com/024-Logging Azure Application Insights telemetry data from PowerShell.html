@@ -1,0 +1,60 @@
+<!-- wp:paragraph -->
+<p>Application Insights (AI) is the application performance management (APM) and logging platform for Microsoft Azure. They provide a client instrumentation library for several popular platforms/languages-- but there isn't any official module for PowerShell. In this post I share some new functions that demonstrate how to log telemetry data to AI from PowerShell.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Design Approach</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Most of the other examples online for logging AI telemetry data within PowerShell will have you have download the Application Insights instrumentation library for .NET, import the library, construct all the objects, and call the Track() methods.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The problem with this approach is that it relies on you downloading and packaging the .NET library with your PowerShell functions or module. This is perfectly fine if you need the full functionality of the instrumentation library. However if you only need to log some of the more simple telemetry like traces and events-- then a lightweight and cross platform friendly option is to just call the Application Insights REST API directly from PowerShell and bypass client instrumentation libraries. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Using a web trace tool like fiddler we can watch the traffic that the AI instrumentation library is sending and then write helper functions that mimic that traffic. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Source Code</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>I wrote 3 helper functions for the most common Track operations I use on a regular basis. You can find the source code for these functions in my <a href="https://github.com/keithbabinec/AzurePowerShellUtilityFunctions">AzurePowerShellUtilityFunctions</a> module on Github. Here are the examples and what they map to in the instrumentation library:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:table -->
+<table class="wp-block-table"><tbody><tr><td><strong><em>Function</em></strong></td><td><strong><em>Client Lib Function</em></strong></td><td><strong><em>Source Link</em></strong></td></tr><tr><td> Send-AppInsightsTraceTelemetry </td><td>TrackTrace()</td><td><a href="https://github.com/keithbabinec/AzurePowerShellUtilityFunctions/blob/master/Functions/Public/Send-AppInsightsTraceTelemetry.ps1">Link</a></td></tr><tr><td> Send-AppInsightsEventTelemetry </td><td>TrackEvent()</td><td><a href="https://github.com/keithbabinec/AzurePowerShellUtilityFunctions/blob/master/Functions/Public/Send-AppInsightsEventTelemetry.ps1">Link</a></td></tr><tr><td>Send-AppInsightsExceptionTelemetry</td><td>TrackException()</td><td><a href="https://github.com/keithbabinec/AzurePowerShellUtilityFunctions/blob/master/Functions/Public/Send-AppInsightsExceptionTelemetry.ps1">Link</a></td></tr></tbody></table>
+<!-- /wp:table -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Example Usage</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Download the <a href="https://github.com/keithbabinec/AzurePowerShellUtilityFunctions">module source</a> code from Github, import it into your current session, then just call the function.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code brush: powershell; notranslate"># assumes your module was downloaded to C:\source
+Import-Module C:\Source\AzurePowerShellUtilityFunctions\AzurePowerShellUtilityFunctions.psd1
+
+# plug in your AI instrumentation key, trace message, and severity.
+Send-AppInsightsTraceTelemetry -InstrumentationKey '&lt;guid>' -Message 'This is an information logging message.' -Severity Information </pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>You can also optionally specify custom properties that get logged with any of these operations. Here is an example for a custom event:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code brush: powershell; notranslate"># log a custom event with extra custom properties
+Send-AppInsightsEventTelemetry -InstrumentationKey '&lt;guid>' -EventName 'MyApplicationEvent1' -CustomProperties @{ 'CustomProperty1'='abc'; 'CustomProperty2'='xyz' }</pre>
+<!-- /wp:syntaxhighlighter/code -->
