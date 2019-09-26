@@ -1,0 +1,337 @@
+<!-- wp:paragraph -->
+<p>The OAuth 2.0 implicit grant flow is great way to handle authentication between a client JavaScript single page web app (SPA) and a web API. For example: a React or Angular web app that needs to authenticate users and then have those users call an authorized ASP.NET Core Web API. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Azure AD and the Microsoft identity platform have well established patterns and support for this workflow. In this blog post I will break down an end-to-end example that includes enabling this flow for AAD users with the following technologies: an Azure AD App configured with role-based access control (RBAC) claims, client side code leveraging React and ADAL.js, and server side code leveraging ASP.NET Core.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:paragraph -->
+<p><strong>Important:</strong> <em>If you need to support non-Azure AD accounts (ex: personal Microsoft accounts), you will need to use the MSAL.js library and the new v2 Microsoft Identity Platform. The instructions in this post reflect the setup to authenticate Azure AD users from ADAL.js</em>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Part 1: Configure the Azure Application</h3>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Create the app registration</h4>
+<!-- /wp:heading -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Login to the <strong>Azure Portal</strong>.</li><li>From the <strong>Azure Active Directory</strong> section in the portal, click on <strong>App Registrations</strong>, then click <strong>New Registration</strong>.</li><li>In the details:<ol><li>Provide a friendly name for your application. I'm calling mine <em>Test-Auth-App</em>.</li><li>For supported account types, select <strong>Accounts in this organizational directory only</strong>.</li><li>The redirect URI can be left blank now and filled in later with the web address(es) for your client side web app. </li></ol></li><li>After creating the app registration, take note of the <strong>Application</strong> (<strong>client</strong>) IDs and the <strong>Directory </strong>(<strong>tenant</strong>) IDs on the overview page. They will be needed in later steps.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:image {"id":1376,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/09/aad-auth-1.png?w=1024" alt="" class="wp-image-1376"/><figcaption> <em>Screenshot: The App registration after being created</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Configure the app manifest</h4>
+<!-- /wp:heading -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Click on the <strong>Authentication </strong>section in the app registration.<ol><li>Enable implicit grant flow by checking the <strong>Access tokens</strong> and <strong>ID tokens</strong> check-boxes, then hitting <strong>Save</strong>.</li></ol></li><li>Click on the <strong>API Permissions</strong> section in the app registration.<ol><li>Remove the default graph API permission that was applied, since it isn't needed. Click on the permission and then hit <strong>Remove </strong>in the flyout window.</li></ol></li><li>Click on the <strong>Manifest </strong>section in the app registration.<ol><li>Inside the <strong>appRoles </strong>property in the manifest, specify one or more custom defined <strong>RBAC</strong> roles (example below).</li><li>These <strong>RBAC</strong> roles are defined by you and are scoped just for this app registration. Generate a new unique guid for each role you add. For my sample app I configured two roles: <em>AdminUser </em>and <em>StandardUser</em>, but these can really be any role description names that make sense for your application. </li><li>See <a href="https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-add-app-roles-in-azure-ad-apps">this guide</a> for more information on how to create custom roles.</li></ol></li><li>After you have added your custom app roles to the registration, hit <strong>Save</strong>.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code">// example custom RBAC role defined in the app manifest
+{
+  "allowedMemberTypes": [
+    "User"
+  ],
+  "displayName": "Admin User",
+  "id": "abe93b85-da30-4ec1-9517-e36a1e2436ac",
+  "isEnabled": true,
+  "description": "Application user that has administrative rights.",
+  "value": "AdminUser"
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:image {"id":1379,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/09/aad-auth-2.png?w=1024" alt="" class="wp-image-1379"/><figcaption> <em>Screenshot: Azure App registration manifest with custom RBAC roles</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Configure the Enterprise Application</h4>
+<!-- /wp:heading -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Each app registration has an associated/linked object defined in Azure Active Directory's <strong>Enterprise Applications</strong> view. This is where we will actually assign users or groups to the RBAC roles we have created in the previous step.</li><li>To find the Enterprise Application object, click on the <strong>Managed application in local directory</strong> link from the app registration overview. </li><li>Click on the <strong>Users and Groups</strong> section.<ol><li>Click <strong>Users</strong> and the flyout menu will allow you to pick from users or groups in your directory. Select the principals that should have access to the app role.</li><li>Click <strong>Select Role </strong>and then you should be able to select the custom roles you created in the <strong>app manifest</strong>.</li><li>After selecting both users/groups and the roles they should be assigned to, click the <strong>Assign </strong>button to grant the permissions.</li></ol></li></ol>
+<!-- /wp:list -->
+
+<!-- wp:image {"id":1382,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/09/aad-auth-3.png?w=1024" alt="" class="wp-image-1382"/><figcaption><em>Screenshot: Users assigned to roles in the Enterprise Application object</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Part 2: Configure server-side (web API) code</h3>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Project setup</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>For the sample project I have created a new ASP.NET Core (2.2) Web API project in Visual Studio 2019. The full source code is in a link at the bottom of this post-- so we will just look at the relevant snippets here.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The really cool part about doing this in ASP.NET Core is that they already have have baked in support for the type of authentication we are about to enable, so we don't need to install additional packages.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Startup.cs</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>In the <strong>ConfigureServices()</strong> and <strong>Configure()</strong> methods of the <strong>Startup.cs </strong>file, we need to add an authentication service. This ends up getting injected into the request pipeline. We configure the options for JwtBearer tokens, and specify the accepted audience and issuing authority. This authentication service automatically handles bearer token validation for us. This confirms that the token we receive from the client is valid and has not been tampered with.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp","highlightLines":""} -->
+<pre class="wp-block-syntaxhighlighter-code">public void ConfigureServices(IServiceCollection services)
+{
+  // other services bootstrap code trimmed for clarity
+  // see full source for complete example.
+  
+  services.AddAuthentication(options =>
+  {
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+  }).AddJwtBearer(options =>
+  {
+    // note: the tenant id (authority) and client id (audience) 
+    // should normally be pulled from the config file or ENV vars.
+    // this code uses an inline example for brevity.
+    
+    options.Authority = "https://login.microsoftonline.com/&lt;tenant ID>";
+    options.TokenValidationParameters = new TokenValidationParameters()
+    {
+      ValidAudience = "&lt;AAD app client ID>"
+    };
+  });
+}
+
+public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+{
+  // other app pipeline builder code trimmed for clarity
+  // see full source for complete example
+  
+  app.UseHttpsRedirection();
+  app.UseCors("CorsPolicy");
+  app.UseAuthentication();
+  app.UseMvc();
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Controller authorization</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Once we have an authentication service configured in the request pipeline from the previous step, we can add the user authorization code. Thankfully ASP.NET Core makes this very simple via attributes. We can add <strong>Authorize()</strong> attributes to the controllers or controller methods to authorize endpoints and make them require a specific <strong>RBAC </strong>role that we defined early. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>This is what it looks like to authorize individual controller methods with the two RBAC roles I created in the app manifest (including one open route with no authorization required).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp"} -->
+<pre class="wp-block-syntaxhighlighter-code">[Route("api/[controller]")]
+[ApiController]
+public class TestController : ControllerBase
+{
+  // this is a sample endpoint that requires 'AdminUser' role access,
+  // as defined in the AAD app registration manifest and assigned via AAD
+  // users and groups.
+  [HttpGet()]
+  [Route("admin")]
+  [Authorize(Roles = "AdminUser")]
+  public async Task&lt;ActionResult&lt;string>> AdminRoleGet()
+  {
+    return Ok("Successfully called the api/test/admin endpoint.");
+  }
+  
+  // this is a sample endpoint that requires 'StandardUser' role access,
+  // as defined in the AAD app registration manifest and assigned via AAD
+  // users and groups.
+  [HttpGet()]
+  [Route("standard")]
+  [Authorize(Roles = "StandardUser")]
+  public async Task&lt;ActionResult&lt;string>> StandardRoleGet()
+  {
+    return Ok("Successfully called the api/test/standard endpoint.");
+  }
+  
+  // this is a sample endpoint that requires no authentication at all.
+  // it is wide open to the public internet.
+  [HttpGet()]
+  [Route("noauth")]
+  public async Task&lt;ActionResult&lt;string>> NoAuthGet()
+  {
+    return Ok("Successfully called the api/test/noauth endpoint.");
+  }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Part 3: Configure client-side code</h3>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Project bootstrap</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>For my sample JavaScript application I quickly initialized a new React project with the standard dependencies by using the React project generator <a href="https://github.com/facebook/create-react-app">create-react-app</a>. Then I removed a bunch of stuff outside the scope of the demo scenario we are walking through. Use NPM to add the <a href="https://www.npmjs.com/package/adal-vanilla">ADAL.js</a> package.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Important:</strong> <em>If running the sample project, configure the local web server to serve your page over HTTPS, otherwise the callbacks back from the Microsoft identity platform won't work.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>App initialization code</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>On app initialization (index.js), we check to see if the user context is cached. If they don't have a valid cached token the user should immediately be redirected to the Azure AD sign-in page. After sign-in the user is redirected from Azure AD sign-in page back to your application-- this time with an encoded JWT bearer token in the URL parameters. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Reminder: </strong><em>This is where the URI redirect fields come into play, as configured in the AAD app registration. The originating URL of your client application must match a valid redirect URL listed in the app registration in AAD, otherwise the authentication will not succeed.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If the code is returning from the sign-in callback and has a valid token, then we can call the main entrypoint for the React application. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>SECURITY WARNING: </strong><em>Be aware that this JavaScript code sample uses the browser's sessionStorage to store tokens. This means the token could be extracted if the site is vulnerable to an <a href="https://www.owasp.org/index.php/Cross-site_Scripting_%28XSS%29">XSS</a> attack or if untrusted/malicious scripts are executed in your web app. Keep this in mind when handling tokens.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code">import React from 'react';
+import ReactDOM from 'react-dom';
+import * as AuthenticationContext from 'adal-vanilla/lib/adal'
+import App from './App';
+
+// store the ADAL config:
+window.adalConfig = {
+  clientId: '&lt;Add your AAD application ID>',
+  tenant: '&lt;Add your AAD tenant ID>',
+  cacheLocation: 'sessionStorage',
+  popUp: false
+};
+
+var authContext = new AuthenticationContext(window.adalConfig);
+
+if (authContext.isCallback(window.location.hash)) {
+  // this handles the redirect back from the AAD sign-in page.
+  // it extracts the hash and processes the AAD token (or error) received.
+  authContext.handleWindowCallback();
+}
+
+function startApplication(username, token) {
+  
+  // render the main application
+  ReactDOM.render(&lt;App user={username} bearerToken={token} />, document.getElementById('root'));
+}
+
+var user = authContext.getCachedUser();
+
+if (user) {
+  let clientId = window.adalConfig.clientId;
+  
+  authContext.acquireToken(clientId, function (errorDesc, token, error) {
+    if (error) {
+      // acquire token failure
+      // In this case the callback passed in the Authentication request constructor will be called.
+      authContext.acquireTokenRedirect(clientId, null, null);
+    }
+    else {
+      //acquired token successfully
+      startApplication(user.userName, token);
+    }
+  });
+}
+else {
+  // Initiate login
+  authContext.login();
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Reviewing the token</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>At some point in the process for building your client-side code its helpful to review the tokens you receive from Azure AD or the Identity Platform. The tokens you receive are encoded and signed, but they are not encrypted. This means we can crack them open and take a look to make sure we are receiving the correct claims.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If you set a breakpoint somewhere in the app bootstrap code, you can grab the token string and plug it into a token decoder like <a href="https://jwt.ms/">https://jwt.ms/</a>. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If you have set up everything correctly so far, you should see your custom RBAC role assignment in the token. Here is an example token generated for my test AAD app:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1398,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/09/aad-auth-4.png?w=847" alt="" class="wp-image-1398"/><figcaption>Screenshot: A (sanitized) token that shows the RBAC claim.</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Calling an Authorized API</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>After the <strong>login()</strong> and <strong>acquireToken()</strong> calls have occurred and you have started your React application, you should be ready to call secure APIs using the JWT bearer token. Supply the token as a header in whatever service/API wrapper code you have. I used the <a href="https://www.npmjs.com/package/axios">axios</a> package for HTTP calls in the sample project.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If the user is authorized to call the controller route, then the request should proceed as you would normally expect. Calling the route from a user that does not have the 'AdminUser' claim (in the case of my sample app) will generate a 403 Forbidden result from the ASP.NET Core Web API. If you try to call the endpoint before you have authenticated (for example by not sending any bearer token at all) then the Web API should return 401 Unauthorized.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The following is a quick mock-up of what the JavaScript would look like to call an API with the bearer token. In the React application you could wrap this code in a class and inject it into your components as needed.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code">import axios from 'axios';
+
+// abbreviated example
+let token = '[my JWT bearer token]'
+
+api = axios.create({
+  baseURL: "https://my-api-server-uri/api",
+  headers: { 
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  }
+});
+
+api.get('/test/admin')
+  .then(function (response) {
+    // handle success
+    return response.data;
+  })
+  .catch(function (error) {
+    throw Error('An error has occurred calling the api: ' + error);
+  });</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":3} -->
+<h3> Conclusion</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>In this post we have seen how to create the AAD app registration for the implicit grant flow, and create the custom RBAC roles. We have also seen the snippets for both the client and server side handling of the implicit grant flow. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If you are interested in actually viewing or running the full sample code, the source is posted on GitHub here:  <a href="https://github.com/keithbabinec/SampleAADImplicitGrantFlow">https://github.com/keithbabinec/SampleAADImplicitGrantFlow</a> </p>
+<!-- /wp:paragraph -->
