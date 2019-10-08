@@ -1,0 +1,131 @@
+<!-- wp:paragraph -->
+<p>A little over a year ago I wrote up a tutorial on how to visually highlight blocked work items on a sprint board for Visual Studio Team Services. VSTS re-branded as Azure DevOps soon after I published that post and so some of the UI instructions have changed slightly now. I decided to make a follow up that runs through the exact same procedure but under the newer Azure DevOps re-branded UI. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Visually highlighting blocked work items is great way for developers, PMs, and the product owner to glance at the board to see blockers without having to deep dive into work items or run extra queries. Read on to find out how it's done.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>What is blocked work?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>In a scrum or agile setting, "blocked" is the state of a work item that you cannot complete due to external factors. For example, you cannot add a feature because you are waiting for a co-worker to finish an outstanding pull request that your work builds upon. Or you cannot complete a user story because you are waiting on another department to provide a license to a 3rd party API.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>It’s helpful for engineers, PM, and the product owner to identify and resolve blocked work quickly so the sprint can continue. The problem today is that in the default view of an Azure DevOps sprint board, you can’t tell if anything is blocked without diving into each work item or running queries.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Updating your view to see blocked work</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p> There are some changes you can make to your Azure DevOps process definition and sprint board styles that allow you to visualize blocked work. It doesn’t require installing any extensions either. There are two phases to the process: modify your work item templates and adding custom style rules. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Step 1: Add a Blocked field to your work items </h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>1. Find your project level settings. In the project sidebar in Azure DevOps, it can be found at the very bottom as <strong>Project settings</strong> with a little gear icon. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>2. On the <strong>Overview</strong> tab from the <strong>Project settings</strong> page, click on the process model associated with your team project. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Important:</strong> <em>You cannot modify the base process models built into Azure DevOps. If you are using a base process model such as Scrum, Agile, or Basic -- you will need to switch to using a custom process that inherits from a base process. This will allow you to modify the process details. <a href="https://docs.microsoft.com/en-us/azure/devops/organizations/settings/work/manage-process?view=azure-devops">See this tutorial</a> if you need to change the project's process to a new custom process.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1426,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/project-overview-process-custom.png?w=1024" class="wp-image-1426"/><figcaption><em>Screenshot: A custom process model associated to a project.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>3. Once inside your custom/editable process model definition, click on the definition object for <strong>Task</strong>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1429,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/custom-process-home.png?w=1024" alt="" class="wp-image-1429"/><figcaption><em>Screenshot: The process model definition home view</em>.</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>4. Click on the <strong>New Field </strong>button in the top left corner of <strong>Layout </strong>section of this work item definition.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>5. On the <strong>Definition</strong> tab of the <strong>Add a field to Task</strong> pop-up, select the <strong>Use an existing field</strong> drop-down and pick the <em>Blocked </em>field. We don't have to make a new blocked field because Azure DevOps already supports it. Also under the <strong>Options</strong> tab, select a default value of <em>No</em>.  </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1431,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/task-new-field-definition.png?w=653" alt="" class="wp-image-1431"/><figcaption><em>Screenshot: Adding a blocked field to the Task work item type.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>6. After adding the field, you should now see it on the work item definition's layout. Repeat the above steps 3-5 for bugs, if you would like those to be highlighted too.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1433,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/task-definition-now-with-blocked.png?w=936" alt="" class="wp-image-1433"/><figcaption><em>Screenshot: The new blocked field added to our Task work item definition.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Step 2: Update the sprint board tile card styles</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Now that our Task work item type supports a blocked field, we need to add the style changes to the sprint board's tile cards. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>1. Click on the gear icon in the top right of your sprint board to view the sprint board settings.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1435,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/sprint-board-before.png?w=1024" alt="" class="wp-image-1435"/><figcaption><em>Screenshot: The sprint board settings gear icon</em>.</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>2. In the <strong>Task </strong>section, under the <strong>Fields </strong>tab, click on the "<strong>+ Field</strong>" button under <strong>Additional fields</strong>. Our new <strong>Blocked </strong>field should now be available in the drop-down menu for fields to display. Ensure this is added here. Repeat the process on the Bug tab if you have also added the Blocked field to the Bug work item type.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1436,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/card-settings-add-blocked.png?w=1024" alt="" class="wp-image-1436"/><figcaption><em>Screenshot: Adding a new field to the front of the tile card for Task items.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>3. Move next to the <strong>Styles</strong> tab. Add a new styling rule. I named my rule Blocked Tasks, and added the rule criteria as follows: Blocked (Field) = Yes, Work Item Type = Task. Then added a card color of orange.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Tip:</strong> <em>If you are also styling bugs-- you will end up creating two styling rules. One rule for bugs, one rule for tasks. This is why the rule criteria should specify that that the style should only apply to that particular work item type (a task or bug). Doing this will provide the granularity to visualize blocked Tasks as orange, and blocked Bugs as dark red, for example.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1438,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/card-settings-custom-style-2.png?w=1024" alt="" class="wp-image-1438"/><figcaption><em>Screenshot: Custom styling rule for a Task tile card.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>4. Save the newly created rules and refresh the page (if it doesn't refresh automatically).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Final result</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>We now can directly toggle a task as blocked or not blocked on the sprint board, and if a task is blocked it will be visually highlighted in orange. Pretty cool stuff!</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1439,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/sprint-board-blocked-final.png?w=1024" alt="" class="wp-image-1439"/><figcaption><em>Screenshot: Final styling rules in place with a blocked work item.</em></figcaption></figure>
+<!-- /wp:image -->
