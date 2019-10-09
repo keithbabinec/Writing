@@ -1,0 +1,220 @@
+<!-- wp:paragraph -->
+<p>In Google's <a href="https://landing.google.com/sre/books/">Site Reliability Engineering book</a>, the chapter on toil (tedious, manual operational work) asserts that we should keep toil work amounts to only a small fraction of our total engineering hours. The reason for this is that too much toil work negatively impacts the engineering team.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>In this post we will review some toil basics, talk about why toil tracking matters, and see how we can leverage Azure DevOps to track and classify our sprint work for enhanced toil budget tracking. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>What is toil?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The <a href="https://landing.google.com/sre/sre-book/chapters/eliminating-toil/">toil chapter</a> in the SRE book covers this pretty well, so I highly recommend you read that before continuing. However the Cliff's notes version is as follows:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:quote -->
+<blockquote class="wp-block-quote"><p>Toil is the kind of work tied to running a production service that tends to be manual, repetitive, automatable, tactical, devoid of enduring value, and that scales linearly as a service grows. </p><cite><a href="https://landing.google.com/sre/sre-book/chapters/eliminating-toil/">Google SRE</a></cite></blockquote>
+<!-- /wp:quote -->
+
+<!-- wp:heading -->
+<h2>Why should we track it?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>Morale:</strong> The more time an engineer spends on toil work, the less time they are able to spend on real engineering work (ex: planned sprint work). If you continually pull engineers away from normal engineering work they will understandably get frustrated and eventually burn out. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Team Velocity:</strong> The more time we waste on throwaway work with no enduring value, the less capacity the business has for real planned work that actually delivers value. Since toil typically scales up with the size of production services, the amount of toil will grow over time if we aren't actively writing automation to keep it in check.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Planning Benefits:</strong> If we set a set toil budget (ex: no more than 35% of engineering hours) and track our toil hours, then we can make better planning decisions. For example if we blow the toil budget in Q1, then Q2 should prioritize automation (toil-reduction) over regular feature work to get us back in balance.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Tracking toil with incident management systems</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Let's assume you have now decided to track toil hours for your engineering organization. If you use an incident management system for your production services, then you now have a huge source of data for your toil budget. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Every incident that comes in is automatically classified as toil-- because this is interrupt driven, production/operational work. Using your incident management system's API or data export features, you would grab the incident data and chart how many hours of toil work were completed by each engineer over the last quarter, for example. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If we only look at our incident management system, then we have to guess or make assumptions about how we spend the remaining work hours. Assuming you also use a work item tracking system, we can leverage that too for an enhanced view of toil stats.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The remainder of this post focuses on how to accomplish that using <a href="https://azure.microsoft.com/en-us/services/devops/boards/">Azure Boards</a> work item tracking.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Defining toil tracking categories</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Before we can make changes to our sprint boards for work item classification, we need to define some categories for tagging non-incident work. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I find that sprint work generally falls into one of the following three categories:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>1. <strong>Regular work:</strong> includes writing new software features, fixing bugs, writing unit tests, writing documentation, meetings, design discussions, code reviews, etc. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>2. <strong>Toil work:</strong> includes handling production incidents, running release deployments, conducting maintenance windows, setting up environments, fixing CI pipeline breaks, etc.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>3. <strong>Toil reduction: </strong>includes work on deployment frameworks/tools, self-healing service automation, scripts for certificate and key rotations, etc.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Adding a toil tracking field to work items</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Now that we have defined a few categories, lets add that classification as a new field in the work item tracking system. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>1. Find your project level settings. In the project sidebar in <strong>Azure DevOps</strong>, it can be found at the very bottom as <strong>Project settings</strong> with a little gear icon.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>2. On the&nbsp;<strong>Overview</strong>&nbsp;tab from the&nbsp;<strong>Project settings</strong>&nbsp;page, click on the process model associated with your team project.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Important:</strong> <em>You cannot modify the base process models built into Azure DevOps. If you are using a base process model such as Scrum, Agile, or Basic — you will need to switch to using a custom process that inherits from a base process. This will allow you to modify the process details. <a href="https://docs.microsoft.com/en-us/azure/devops/organizations/settings/work/manage-process?view=azure-devops">See this tutorial</a> if you need to change the project’s process to a new custom process.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Note:</strong> <em>Performing these updates requires Project Collection Administrator access in your Azure DevOps project (or have Allow permissions to edit processes).</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>3. Click on the work item definition for <strong>Task</strong>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>4. Hover over the group section that you would like to add the field to (for example the <strong>Effort</strong> group), and click <strong>New field</strong>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1466,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/1-edit-work-item-new-field.png?w=1024" alt="" class="wp-image-1466"/><figcaption><em>Screenshot: Creating a new field in the Task template.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>5. On the <strong>Add a field to Task</strong> pop-up, select <strong>Create a field</strong>. Make a field type of 'picklist' with the categories we defined earlier. I named my new field <em>Classification</em>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1468,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/2-new-classification-field.png?w=656" alt="" class="wp-image-1468"/><figcaption><em>Screenshot: Adding a work classification field.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>6. Repeat the same steps above for the <strong>Bug </strong>work item template. However instead of creating a new field, select <strong>Use an existing field </strong>to browse and find the <em>Classification </em>field that was already created for tasks.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>7. Then head over to your sprint board and add the new field to your sprint board tile cards. Click on the <strong>Settings </strong>gear icon on the board, then add the <em>Classification</em> field to both <strong>Task</strong> and <strong>Bug </strong>tiles.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1469,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/3-sprint-board-home.png?w=1024" alt="" class="wp-image-1469"/><figcaption><em>Screenshot: settings gear icon above the sprint board.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":1470,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/4-add-classification-to-tile-cards.png?w=840" alt="" class="wp-image-1470"/><figcaption><em>Screenshot: adding the classification field to the tile cards.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>After the above steps are completed, you can start tagging items as regular work, toil, or toil-reduction-- directly from the sprint board (or from the work item view).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1471,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/5-selecting-toil-classification-on-tile-card.png?w=1024" alt="" class="wp-image-1471"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2>Work item queries</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Using <strong>Azure Boards</strong> <a href="https://docs.microsoft.com/en-us/azure/devops/boards/queries/using-queries?view=azure-devops">query features</a>, its easy to build custom queries to help you find items that need tagging, or find the work items that can be used in toil stats reporting. You can manually build queries in the query editor in the browser. It also includes an <strong>Export to CSV</strong> button on query results. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>For automated data export you can leverage the Azure DevOps API to execute queries. The query API reference information can be <a href="https://docs.microsoft.com/en-us/rest/api/azure/devops/wit/wiql?view=azure-devops-rest-5.1">found here</a>. Let's take a look at a couple examples written in the Azure DevOps work item query language (<strong>WIQL</strong>).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Important:</strong> <em>You will need to replace the Project Name, Team Name, and ID with values from your environment</em>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>1. Find all items in the current sprint that need a classification tag:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>select &#91;System.Id], &#91;System.WorkItemType], &#91;System.Title], &#91;System.AssignedTo], &#91;System.State], &#91;System.Tags] 
+from WorkItems where &#91;System.TeamProject] = @project 
+and &#91;System.WorkItemType] in ('Bug', 'Task') 
+and &#91;System.IterationPath] = @currentIteration('&#91;AzDo-Test]\AzDo-Test Team &lt;id:bee58faa-5a03-4187-93b7-3fcf06d1c9df>') 
+and &#91;Custom.Classification] = ''"</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>2. Find completed items in the current sprint that can be used for toil stats reporting:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>select &#91;System.Id], &#91;System.WorkItemType], &#91;System.Title], &#91;System.AssignedTo], &#91;System.State], &#91;Microsoft.VSTS.Scheduling.CompletedWork], &#91;Custom.Classification], &#91;System.Tags] 
+from WorkItems where &#91;System.TeamProject] = @project 
+and &#91;System.WorkItemType] in ('Bug', 'Task') 
+and &#91;System.State] = 'Closed' 
+and &#91;System.IterationPath] = @currentIteration('&#91;AzDo-Test]\AzDo-Test Team &lt;id:bee58faa-5a03-4187-93b7-3fcf06d1c9df>') 
+and &#91;Custom.Classification] &lt;> ''"</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:heading -->
+<h2>Reporting on toil stats</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>After we have exported the work item data at the end of the sprint or release, we can combine it with data from the incident management system and then plug it all into a reporting application.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>For demonstration purposes I just opened up PowerBI desktop to make some quick charts with the work items data from this post (no incident management system data). </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1476,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/9-power-bi-chart-toil.png?w=660" alt="" class="wp-image-1476"/><figcaption><em>Screenshot: A quick and easy Power BI chart example for toil hours</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>How you splice and visualize that data is up to you, but there are some cool things to report on if we have both the incident management system's data and the data from our sprint boards.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>A few questions you can answer with reporting software:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>How much time did we spend on toil hours, compared to other work?</li><li>How distributed is toil work across team members?</li><li>How distributed is toil work across multiple sprints?</li><li>How much toil is coming from our incident management system vs sprint work?</li></ol>
+<!-- /wp:list -->
