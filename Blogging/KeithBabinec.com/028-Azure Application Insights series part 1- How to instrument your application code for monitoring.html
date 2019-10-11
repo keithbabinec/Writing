@@ -1,0 +1,222 @@
+<!-- wp:paragraph -->
+<p>This is the first post in a new series I'm writing on Azure's Application Insights (AI) service. The goal of the series is to walk through some of the basics for monitoring your Azure hosted services with Application Insights. We will cover topics like instrumentation, monitoring dashboards, and paging alerts. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>In this post we have a look at code instrumentation: What is it? What are SLIs? How do we use the Application Insights client libraries? What are some instrumentation best practices? </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>What is instrumentation?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Instrumentation is code added to an application that allows us to monitor the application's performance, debug errors, track metrics, and write trace information.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Instrumenting your application is helpful because it provides more insight into the application or service is functioning (beyond a simple healthbeat response code). Instrumentation becomes crucial in distributed systems to track requests processing through the system.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Service level indicators</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>How do we know what to instrument? Or which parts of our application should expose metrics? Before you sit down to add any instrumentation code you will need to define some service level objectives  and service level indicators that matter for your environment.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li><strong>Service Level Indicators (SLI)</strong>: these are the individual measurements or metrics to track. Examples can include: <em>request latency, error rate, availability, throughput, storage durability, etc.</em> <br></li><li><strong>Service Level Objectives (SLO)</strong>: these are the target values or ranges for a service level that is measured with an SLI. For example: <em>search latency should be less than 100ms</em>.</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>You should have a small number of SLOs that cover core user scenarios. Think about the perspective of the end-user when defining these. Keep them simple and measurable. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Deploy an Application Insights service</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The obvious prerequisite here is that we need to have a deployed instance of the Azure Application Insights service. Deploy one to your Azure subscription if you haven't already. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I recommend taking the infrastructure-as-code route and deploying your Application Insights resource via <strong>Azure Resource Manager (ARM)</strong> templates: <a href="https://docs.microsoft.com/en-us/azure/azure-monitor/app/powershell">instructions</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>After deployment take note of the instrumentation key. It can be retrieved through code by calling the Azure APIs or viewed from the Azure Portal directly on the <strong>overview </strong>tab of the resource:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1502,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/1-ai-instance-overview-instrumentation-key.png?w=1024" alt="" class="wp-image-1502"/><figcaption><em>Screenshot: The overview page of the AI resource.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p><strong>Note:</strong> <em>The instrumentation key is not considered a secret value. It is safe to check this value into source control and/or use it as a configuration value in public client applications.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Sending instrumentation data with Application Insights client libraries</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Now its time to add the Application Insights client library to our application. Microsoft provides <a href="https://docs.microsoft.com/en-us/azure/azure-monitor/app/platforms#supported-platforms-and-frameworks">several of these packages for different languages</a>. The library provides a thread-safe wrapper class around the calls to send the instrumentation (telemetry) data to Azure.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I'm working with a sample .NET Core console application, so I install the <strong>Microsoft.ApplicationInsights</strong> nuget package from the Package Manager window or console.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The following is a C# code sample that uses .NET Core's dependency injection to configure a <strong>TelemetryClient </strong>class, and then use it send instrumentation data (a 'hello world' message) to our Application Insights service in Azure:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>// build a services collection
+var servicesCollection = new ServiceCollection();
+servicesCollection.AddSingleton&lt;TelemetryClient>();
+
+// build the service provider from the collection
+// this is used in dependency injection for .NET core services.
+var serviceProvider = servicesCollection.BuildServiceProvider();
+
+// configure the AI client by adding an instrumentation key
+// you can omit this step if you have set your InstrumentationKey via environment variable.
+serviceProvider.GetService&lt;TelemetryClient>().InstrumentationKey = "-key-";
+
+// when you need to log some data, pull the AI client
+// from the service provider and call the .Track() methods.
+// this example sends a trace message.
+var aiClient = serviceProvider.GetService&lt;TelemetryClient>();
+aiClient.TrackTrace("Hello world");
+
+// Telemetry events are cached locally and sent in batches.
+// Calling .Flush() will force any pending events to send immediately.
+// This is not normally called unless you are in a single-threaded context which is about to exit before sending the data.
+aiClient.Flush();</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>After running this code in a .NET Core console application, we have our first piece of telemetry data logged to the Application Insights service. Clicking on the individual event reveals additional properties about the client and where the telemetry was sent from.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Note:</strong> <em>Telemetry takes a few minutes to show up in the Application Insights service in Azure. Data is not immediately available.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1504,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/2-hello-world-ai-trace-message.png?w=1024" alt="" class="wp-image-1504"/><figcaption><em>Screenshot: Our first logged telemetry message.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>The <strong>TelemetryClient </strong>class exposes different methods to track the various types of instrumentation data we want to send. For example sending metrics with <strong>TrackMetric()</strong>, or exceptions with <strong>TrackException()</strong>. For detailed instructions on how to use each one correctly, visit <a href="https://docs.microsoft.com/en-us/azure/azure-monitor/app/api-custom-events-metrics">this reference article</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Instrumentation best practices</h2>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":4} -->
+<h4>1. Use the built-in Azure service metrics to capture basic SLIs.</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Let's assume we have deployed an Azure App Service and we want to instrument the code to capture service level indicators (SLIs). Before you start writing custom telemetry or metrics, be aware that the Azure platform provides loads of SLIs out of the box for each Azure service type. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>For example Azure App Services has over 30 SLIs available at the time of this writing (<a href="https://docs.microsoft.com/en-us/azure/app-service/web-sites-monitor#understand-metrics">see here</a>). This means you don't have to manually calculate and report on <em>Average Response Time</em>, since there is already an SLI available for that. Review the monitors available for the service before you do anything else. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>2. Use telemetry correlation features.</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>When working with distributed systems like microservices, it's easy to lose the full context of a request when examining a single piece of telemetry data. Application Insights supports telemetry correlation features that allow you to tie a string of related sub-activities together and associate them as a single larger request. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>This is really helpful for seeing how a request flows through the entire system and for debugging scenarios. More information can be <a href="https://docs.microsoft.com/en-us/azure/azure-monitor/app/correlation">found here</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>3. Use a single Application Insights service instance.</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Instead of having multiple separate Application Insights services per application deployed in Azure, just deploy a single service per application. The reason for this is that the telemetry correlation features only work within a single Application Insights service, and not across multiple Application Insights services. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The data volume that a single Application Insights service can ingest is pretty impressive, so this should work for all but the most extreme usage scenarios. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>4. Use telemetry initializers to enforce consistency.</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Telemetry initializers can be used to filter or pre-process telemetry events before they are sent. For example you want to make sure every piece of telemetry sent has some custom properties assigned-- like a specific service and sub-component name, or additional custom tags. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>This enforces that all telemetry gets processed in the same manner and application code that calls the <em>TelemetryClient.Track()</em> operations don't have to remember to add those properties. More information is <a href="https://docs.microsoft.com/en-us/azure/azure-monitor/app/api-filtering-sampling#add-properties-itelemetryinitializer">available here</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>5. Keep custom telemetry event and metric names stable.</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>I recommend using <em>TelemetryClient.TrackEvent("MyCustomEvent")</em> to log custom events related to important user behavior or system events. For example a user completed a specific transaction type, or a specific unrecoverable error condition was reached that requires on-call support intervention.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>We can drive alerts and metrics from specific event names, so we should treat them as string constants. I also find it helpful to add pinning unit tests that ensure the value of the event name constants don't change. The reason for this is that changing the event names could impact existing alerts or metrics. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>6. Leverage the dependency tracking features.</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>If we leverage <em>TelemetryClient.TrackDependency()</em> on calls to other services or APIs, then Application Insights can show us some rich data on the availability and latency of those downstream resources. Some dependencies are even tracked automatically. See more <a href="https://docs.microsoft.com/en-us/azure/azure-monitor/app/asp-net-dependencies">information here</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>7. Use multi-dimensional metrics to enable better charts</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>If you are designing custom metrics for your application, try to use multi-dimensional metrics instead of flat metrics. Let's take a look at an example of each to see the difference:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>// track a flat metric (the number of signed-in users)
+client.GetMetric("SignedInUsers").TrackValue(17);
+
+// track a multi-dimensional metric (number of active users, by type).
+var signedInUsers = client.GetMetric("SignedInUsers", "UserType");
+signedInUsers.TrackValue(3, "PowerUsers");
+signedInUsers.TrackValue(14, "StandardUsers");</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>This is a simple example but it helps us down the road when we start building charts/graphs. Instead of a single lined chart with the number of signed-in users, we can have a chart with multiple lines plotting the different user types of signed-in users.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Conclusion</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>That concludes the first post of the Application Insights series. Stay tuned for the next post where we look at creating Azure Dashboards for telemetry data.</p>
+<!-- /wp:paragraph -->
