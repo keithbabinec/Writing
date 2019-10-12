@@ -1,0 +1,226 @@
+<!-- wp:paragraph -->
+<p>This is the second post in a series I'm writing on Azure's Application Insights (AI) service. In the previous post we looked at how to instrument our application code for monitoring. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Here in this post we will walk through how to create application monitoring dashboards directly in Azure using the Azure Dashboards feature and leveraging data from Application Insights and Azure resource metrics. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>Series links</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><em>Part 1:</em> <a href="https://keithbabinec.com/2019/11/01/azure-application-insights-series-part-1-how-to-instrument-your-application-code-for-monitoring/">Azure Application Insights series part 1: How to instrument your application code for monitoring</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Azure dashboards</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Azure allows you to create custom monitoring dashboards with ease thanks to the <a href="https://docs.microsoft.com/en-us/azure/azure-portal/azure-portal-dashboards">Azure Dashboards feature</a>. That reference link shows in detail how to create a dashboard, add/edit dashboard tiles using their WYSIWYG editor, and sharing/publishing your dashboard. I won't cover most of those basics since they are already represented well in the above link.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>We will however cover some examples for creating charts to show built-in metrics (SLIs) for Azure resources and making charts for custom instrumentation.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Tip:</strong> <em>I recommend designing the initial dashboard view/layout with the  WYSIWYG editor in the Azure portal, then following the <a href="https://docs.microsoft.com/en-us/azure/azure-portal/azure-portal-dashboards-create-programmatically">instructions here</a> to convert the Dashboard's exported contents into an Azure Resource Manager (ARM) template for deployment in your infrastructure-as-code deployment pipeline.</em> </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Chart example: built-in metrics</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>As I mentioned in the first post in the series, many of the common service level indicators (SLIs) for Azure services are already baked in. For demonstration purposes let's create a chart off of one of those built-in metrics for an Azure Web App: HTTP requests.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>1. Create a new (or edit existing) <strong>Dashboard </strong>in the Azure Portal.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>2. Add a <strong>Metrics chart</strong> control from the list of available tiles in the <strong>Tile Gallery</strong>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1540,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/1-new-metric-chart.png?w=1024" alt="" class="wp-image-1540"/><figcaption><em>Screenshot: adding a metrics chart control to a new empty dashboard.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>3. Move/resize the metrics tile chart as you wish, then click <strong>Done customizing</strong>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1542,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/2-done-customizing-dashboard.png?w=1024" alt="" class="wp-image-1542"/><figcaption><em>Screenshot: A new metrics chart control (with no data associated yet).</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>4. Once returning to the main dashboard view, we can click on <strong>Edit in Metrics</strong> in the middle of the dashboard tile to connect this chart control to some data.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1544,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/3-edit-in-metrics.png?w=1024" alt="" class="wp-image-1544"/><figcaption><em>Screenshot: The metrics control ready to connect data.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>5. In the <strong>Metrics</strong> window, click on "<strong>+ Select a resource</strong>". Since we want to add a chart for a metric on an Azure resource, we find and select that Azure resource directly from this menu (instead of selecting the Application Insights instance where our custom instrumentation events end up).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1548,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/4-select-a-resource-2.png?w=1024" alt="" class="wp-image-1548"/><figcaption><em>Screenshot: Selecting our Azure resource target.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>6. After selecting a resource, select the <strong>metric</strong>. For our example chart we can drill down and find <strong>Requests</strong>. This is where we can see all of the built-in metric SLI's available to monitor on the resource.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1550,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/5-select-built-in-requests-metric.png?w=852" alt="" class="wp-image-1550"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>7. After selecting a metric namespace, we can select an <strong>aggregation type</strong>. Average aggregation is fine for this chart.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>8. Click on the <strong>Save to Dashboard</strong> button. Then we should see the chart data on the dashboard now:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1552,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/8-final-chart-on-dashboard.png?w=1024" alt="" class="wp-image-1552"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2>Chart example: custom instrumented metrics </h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Scenario: You have added custom metrics for your Azure Web App by instrumenting your application code to log those metrics to Application Insights. For demo purposes, assume we now log a new metric called <em>SignedInUsers</em>, with a second dimension added (a custom property called <em>UserType</em>).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>// logging this metric from application code
+var aiClient = new TelemetryClient();
+
+var signedInUsers = aiClient.GetMetric("SignedInUsers", "UserType");
+
+signedInUsers.TrackValue(1, "PowerUsers");
+signedInUsers.TrackValue(27, "StandardUsers");</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>The setup for this scenario is nearly identical to the steps for built-in metrics, except our target resource is the Azure Application Insights instance where we log the metrics (instead of the Azure Web App resource).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>1. Start by editing your Dashboard object in the Azure portal, and adding a new <strong>Metrics chart</strong> tile.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>2. When selecting the target resource for the metrics, specify your Application Insights resource where the custom metric telemetry is being logged to.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1555,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/9-custom-metrics-select-ai-instance.png?w=1024" alt="" class="wp-image-1555"/><figcaption><em>Screenshot: Selecting the App Insights resource as a metric source.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>3. Your custom metrics should end up in the <strong>Custom </strong>group under the standard <strong>Log-based metrics</strong> namespace.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1556,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/10-custom-metric-found.png?w=719" alt="" class="wp-image-1556"/><figcaption><em>Screenshot: Selecting a custom metric.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>4. Since this metric has multiple dimensions, we can click the <strong>Apply splitting</strong> button to graph multiple lines.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1557,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/11-custom-metric-add-splitting.png?w=810" alt="" class="wp-image-1557"/><figcaption><em>Screenshot: Splitting a custom metric.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>5. After saving the chart to the dashboard, we now have something that looks like the screenshot below, assuming some metric telemetry was actually logged:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1558,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/12-custom-metrics-final-chart.png?w=854" alt="" class="wp-image-1558"/><figcaption><em>Screenshot: Final custom metric chart with splitting applied</em>.</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2>Chart example: custom  instrumented events</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Scenario: You have added custom events for your Azure Web App by instrumenting your application code to log those events to Application Insights. For demo purposes, assume we now log a new event called <em>TransactionCompleted</em>, with a second dimension added (a custom property called <em>TransactionType</em>). </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>// logging this event from application code
+var aiClient = new TelemetryClient();
+
+var eventCustomProperties = new Dictionary&lt;string, string>() { { "TransactionType", "Sale" } };
+
+aiClient.TrackEvent("TransactionCompleted", eventCustomProperties);</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p>This example is similar to the example for custom metrics, in that the Application Insights resource is our target (since that is where our event telemetry is logged).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>1. Start by editing your Dashboard object in the Azure portal, and adding a new <strong>Metrics chart</strong> tile. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>2. When selecting the target resource for the metrics, specify your Application Insights resource where the custom event telemetry is being logged to.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>3. Start by adding a metric source of <strong>Events</strong>, under the <strong>Log-based metrics</strong> namespace.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1560,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/13-events-in-log-based-metrics.png?w=738" alt="" class="wp-image-1560"/><figcaption><em>Screenshot: Creating a metric for events.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>4. At the moment our line graph shows literally all custom event telemetry. We want to add a filter this chart to show just the events from our new custom event:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1562,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/14-events-filter-to-custom.png?w=828" alt="" class="wp-image-1562"/><figcaption><em>Screenshot: Adding the event filter.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>5. Since our custom event has an additional custom property, we can now add splitting on that property:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1563,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/15-events-add-splitting-by-type.png?w=998" alt="" class="wp-image-1563"/><figcaption><em>Screenshot: Splitting the event by type.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>6. Final result of the custom chart looks pretty great. It shows our custom event <em>TransactionCompleted</em>, split into the different types of transactions based on the additional custom property.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1564,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/16-final-chart-custom-event-with-splitting.png?w=545" alt="" class="wp-image-1564"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2>Conclusion</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>This concludes the second post of the Application Insights series. Stay tuned for the next post where we look at creating monitoring alerts for the telemetry data in Application Insights.</p>
+<!-- /wp:paragraph -->
