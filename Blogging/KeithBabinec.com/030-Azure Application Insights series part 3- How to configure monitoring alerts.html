@@ -1,0 +1,363 @@
+<!-- wp:paragraph -->
+<p>This is the third and final post in a series I'm writing on Azure's Application Insights (AI) service. In the previous post we looked at how to create monitoring dashboards in Azure.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Here in this post we run through some examples for how to configure monitoring alerts with built-in Azure resource metrics and custom instrumented events and metrics.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>Series links</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><em>Part 1:</em> <a href="https://keithbabinec.com/2019/11/01/azure-application-insights-series-part-1-how-to-instrument-your-application-code-for-monitoring/">Azure Application Insights series part 1: How to instrument your application code for monitoring</a>.<br><br><em>Part 2:</em> <a href="https://keithbabinec.com/2019/11/15/azure-application-insights-series-part-2-how-to-create-application-monitoring-dashboards-in-azure/">Azure Application Insights series part 2: How to create application monitoring dashboards in Azure</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Azure Action Groups</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Before we can create alerts we need to define some <strong>Azure action groups</strong>. An action group defines the set of actions that can be invoked when an alert is triggered. For example: sending a text message, starting an Azure function, or invoking a web hook. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If you use an incident management system, then this is where you would connect/send alerts. For demo purposes I'm just going to have Azure send me text message alerts directly.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Manually creating an action group</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>1. Open your <strong>Application Insights</strong> resource in the Azure portal.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>2. Click on the <strong>Alerts </strong>tab, then click on <strong>Manage actions</strong>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1588,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/1-ai-manage-actions.png?w=1024" alt="" class="wp-image-1588"/><figcaption><em>Screenshot: The 'manage actions' button in on the App Insights resource.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>3. Click on "<strong>+ Add action group</strong>". Provide a full and short name for the action group, along with a resource group and target Azure subscription.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>4. You should add at least one action to get started with alerts. For our sample scenario, I have added a single action named '<em>Text</em>' with the <em>Email/SMS/Push/Voice</em> <strong>action type</strong>. <br><br>The wizard will ask you for the contact information you want the alerts to flow to. Click <strong>OK </strong>when you are done filling out the forms, and Azure will create your action group.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1589,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/2-newly-created-action-group.png?w=1024" alt="" class="wp-image-1589"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Creating an action group via automation</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>You can create action groups in your CI pipeline by using the Azure Resource Manager (ARM) templates (<a href="https://docs.microsoft.com/en-us/azure/templates/microsoft.insights/2019-06-01/actiongroups">here</a>), or by the Azure API operations for action groups (<a href="https://docs.microsoft.com/en-us/rest/api/monitor/actiongroups">here</a>).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Kusto Query Language</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The third alert example up ahead will use the log query features for Application Insights. The query syntax used for Application Insights logs uses Kusto, which you can read more about <a href="https://docs.microsoft.com/en-us/azure/azure-monitor/log-query/get-started-queries">here</a>. Providing this info ahead of time so the log queries will make some sense.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Alert example: Built-in resource metric</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Scenario: You have a deployed Azure Web App and you want to trigger an alert when a built-in Azure resource metric reaches a certain threshold. For example, when too many HTTP 500 errors are returned to clients. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Creating metric alerts in the Azure portal is pretty easy, but I definitely recommend creating them via Azure Resource Manager (ARM) templates so they can be created like regular objects alongside your other resources in a CI pipeline.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The Azure RM resource we want to create is a <em>Microsoft.Insights/metricAlerts</em> object (<a href="https://docs.microsoft.com/en-us/azure/templates/microsoft.insights/2018-03-01/metricalerts">documented here</a>). Here is the ARM template resource definition using the most current schema and a couple of input parameters:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code">{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "webSiteName": {
+      "type": "string"
+    },
+    "webSiteRegion": {
+      "type": "string"
+    },
+    "actionGroupName": {
+      "type": "string"
+    }
+  },
+  "variables": { },
+  "functions": [ ],
+  "resources": [
+    {
+      "name": "[concat(parameters('webSiteName'), '-Throwing-500-Errors')]",
+      "type": "Microsoft.Insights/metricAlerts",
+      "apiVersion": "2018-03-01",
+      "location": "global",
+      "tags": {},
+      "properties": {
+        "description": "The Web application has thrown at least 5 HTTP 500 errors in the last 5 minutes.",
+        "severity": 2,
+        "enabled": true,
+        "scopes": [
+          "[concat(resourceGroup().id, '/providers/Microsoft.Web/sites/', parameters('webSiteName'))]"
+        ],
+        "evaluationFrequency": "PT1M",
+        "windowSize": "PT5M",
+        "targetResourceType": "Microsoft.Web/sites",
+        "targetResourceRegion": "[parameters('webSiteRegion')]",
+        "criteria": {
+          "allOf": [
+            {
+              "metricName": "Http5xx",
+              "metricNamespace": "Microsoft.Web/sites",
+              "operator": "GreaterThan",
+              "timeAggregation": "Total",
+              "name": "Metric1",
+              "dimensions": [],
+              "monitorTemplateType": "8",
+              "criterionType": "StaticThresholdCriterion",
+              "threshold": 5
+            }
+          ],
+          "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"
+        },
+        "autoMitigate": true,
+        "actions": [
+          {
+            "actionGroupId": "[concat(resourceGroup().id, '/providers/microsoft.insights/actiongroups/', parameters('actionGroupName'))]",
+            "webhookProperties": {}
+          }
+        ]
+      }
+    }
+  ],
+  "outputs": { }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>Which was executed using this PowerShell code:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code"># azure login
+Login-AzureRmAccount
+
+# run the deployment
+New-AzureRmResourceGroupDeployment -ResourceGroupName TestRG -Name TestDeployment -TemplateFile 'built-in-metric-alert.json' -Verbose -webSiteName "dashboards-testing-webapp" -webSiteRegion "westus2" -actionGroupName "paging-alerts-actiongroup"</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>A few things to note when examining this template:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>The <strong><em>scopes</em></strong> property specifies the target resource the metric is found on. In this case we are providing the fully qualified resource name of a sample website in.</li><li>The <strong><em>criteria </em></strong>property describes the target metric and number of times it must be reached.</li><li>The <strong><em>actions </em></strong>property describes the name of the action group that should be invoked when this alert fires.</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>If we did everything correctly, we should see a new alert show up in the resource group (under hidden resources), or by viewing the alerts tab of the Application Insights resource:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1598,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/3-deployed-alert-object.png?w=1024" alt="" class="wp-image-1598"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2>Alert example: Custom metrics</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Scenario: You have a deployed Azure Web App and you want to trigger an alert when one of your custom metrics reaches a threshold. These are metrics that you are logging directly to Application Insights through your instrumented application code, instead of a metric baked into an Azure resource. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>For the example template I am creating an alert whenever a custom metric called '<em>EmailQueue</em>' exceeds a value of 1000. The ARM template object is still <em>Microsoft.Insights/metricAlerts,</em> but the template looks slightly different because now the <strong>scope </strong>is set to the fully qualified name of the Application Insights resource, and the <strong>metric namespace</strong> is different.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code">{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "webSiteName": {
+      "type": "string"
+    },
+    "aiResourceName": {
+      "type": "string"
+    },
+    "actionGroupName": {
+      "type": "string"
+    }
+  },
+  "variables": { },
+  "functions": [ ],
+  "resources": [
+    {
+      "name": "[concat(parameters('webSiteName'), '-email-queue-is-too-high')]",
+      "type": "Microsoft.Insights/metricAlerts",
+      "apiVersion": "2018-03-01",
+      "location": "global",
+      "tags": {},
+      "properties": {
+        "description": "The custom metric for EmailQueue has exceed 1000 in the last 5 minutes.",
+        "severity": 2,
+        "enabled": true,
+        "scopes": [
+          "[concat(resourceGroup().id, '/providers/microsoft.insights/components/', parameters('aiResourceName'))]"
+        ],
+        "evaluationFrequency": "PT1M",
+        "windowSize": "PT5M",
+        "targetResourceType": "microsoft.insights/components",
+        "criteria": {
+          "allOf": [
+            {
+              "metricName": "EmailQueue",
+              "metricNamespace": "Azure.ApplicationInsights",
+              "operator": "GreaterThan",
+              "timeAggregation": "Maximum",
+              "name": "Metric1",
+              "dimensions": [],
+              "monitorTemplateType": "8",
+              "criterionType": "StaticThresholdCriterion",
+              "threshold": 1000
+            }
+          ],
+          "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"
+        },
+        "autoMitigate": true,
+        "actions": [
+          {
+            "actionGroupId": "[concat(resourceGroup().id, '/providers/microsoft.insights/actiongroups/', parameters('actionGroupName'))]",
+            "webhookProperties": {}
+          }
+        ]
+      }
+    }
+  ],
+  "outputs": { }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>I can trip this alert by logging some test metrics beyond the threshold, which invokes my text message action group. Then I receive this message a few moments later:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1603,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2019/10/4-alert-sms-triggered.png?w=1024" alt="" class="wp-image-1603"/><figcaption><em>Screenshot: an incoming text message alert.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>The text message alert follows the format below, so keep this in mind when naming the alerts and action groups:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>&#91;Name of action group]:(Alert Status):(Alert Severity) Azure Monitor Alert &#91;Name of alert] on &#91;Name of Azure Resource]</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:heading -->
+<h2>Alert example: Log search alerts </h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Scenario: You have a deployed Azure Web App and you want to trigger an alert when a custom event is fired. These are events that you are logging directly to Application Insights through your instrumented application code. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>For this example I am creating an alert whenever a custom event called '<em>StorageLayerCapacityLimitReached</em>' has fired -- a disastrous (but fictional) event that surely requires on-call engineer intervention. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The ARM template object has changed to <em>Microsoft.Insights/scheduledQueryRules</em> (<a href="https://docs.microsoft.com/en-us/azure/templates/microsoft.insights/2018-04-16/scheduledqueryrules">documented here</a>), and we are leveraging a Kusto query language string that allows us to search the log for recent occurrences of this event. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code">{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "aiResourceName": {
+      "type": "string"
+    },
+    "actionGroupName": {
+      "type": "string"
+    }
+  },
+  "variables": { },
+  "functions": [ ],
+  "resources": [
+    {
+      "type": "Microsoft.Insights/scheduledQueryRules",
+      "apiVersion": "2018-04-16",
+      "name": "StorageLayerCapacityLimitReachedAlert",
+      "location": "westus2",
+      "properties": {
+        "description": "The storage layer capacity limit has been reached. New storage must be provisioned immediately.",
+        "enabled": "true",
+        "source": {
+          "query": "customEvents | where name == 'StorageLayerCapacityLimitReached'",
+          "authorizedResources": [],
+          "dataSourceId": "[concat(resourceGroup().id, '/providers/microsoft.insights/components/', parameters('aiResourceName'))]",
+          "queryType": "ResultCount"
+        },
+        "schedule": {
+          "frequencyInMinutes": 5,
+          "timeWindowInMinutes": 5
+        },
+        "action": {
+          "odata.type": "Microsoft.WindowsAzure.Management.Monitoring.Alerts.Models.Microsoft.AppInsights.Nexus.DataContracts.Resources.ScheduledQueryRules.AlertingAction",
+          "severity": "2",
+          "aznsAction":{
+            "actionGroup": [ "[concat(resourceGroup().id, '/providers/Microsoft.Insights/actionGroups/', parameters('actionGroupName'))]" ]
+          },
+          "trigger":{
+            "thresholdOperator": "GreaterThan",
+            "threshold": 0
+          }
+        }
+      }
+    }
+  ],
+  "outputs": { }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>The resulting text message for this alert follows the same format as the metric alert:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:code -->
+<pre class="wp-block-code"><code>&#91;Name of action group]:(Alert Status):(Alert Severity) Azure Monitor Alert &#91;Name of alert] on &#91;Name of Azure Resource]</code></pre>
+<!-- /wp:code -->
+
+<!-- wp:paragraph -->
+<p><strong>ScheduledQueryRule</strong> alerts are powerful because you can create alerts off of the results of any conceivable log query, not just queries looking for events. If you get familiar with <strong>Kusto </strong>you can write some queries that detect more complex alert situations in your application.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Conclusion</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>This concludes the 3rd and final post in the Application Insights series, where we have covered code instrumentation, monitoring dashboards, and alerts. Hopefully you learned a few things along the way. Good luck and happy monitoring!</p>
+<!-- /wp:paragraph -->
