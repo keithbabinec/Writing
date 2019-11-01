@@ -19,7 +19,7 @@
 <!-- /wp:paragraph -->
 
 <!-- wp:paragraph -->
-<p>Instrumenting your application is helpful because it provides more insight into the application or service is functioning (beyond a simple healthbeat response code). Instrumentation becomes crucial in distributed systems to track requests processing through the system.</p>
+<p>Instrumenting your application is helpful because it provides more insight into how the application or service is functioning (beyond a simple healthbeat response code). Instrumentation becomes crucial in distributed systems to track requests processing through the system.</p>
 <!-- /wp:paragraph -->
 
 <!-- wp:heading -->
@@ -132,7 +132,7 @@ aiClient.Flush();</code></pre>
 <!-- /wp:paragraph -->
 
 <!-- wp:paragraph -->
-<p>For example Azure App Services has over 30 SLIs available at the time of this writing (<a href="https://docs.microsoft.com/en-us/azure/app-service/web-sites-monitor#understand-metrics">see here</a>). This means you don't have to manually calculate and report on <em>Average Response Time</em>, since there is already an SLI available for that. Review the monitors available for the service before you do anything else. </p>
+<p>For example Azure App Service has over 30 SLIs available at the time of this writing (<a href="https://docs.microsoft.com/en-us/azure/app-service/web-sites-monitor#understand-metrics">see here</a>). This means you don't have to manually calculate and report on <em>Average Response Time</em>, since there is already an SLI available for that. Review the monitors available for the service before you do anything else. </p>
 <!-- /wp:paragraph -->
 
 <!-- wp:heading {"level":4} -->
@@ -156,7 +156,7 @@ aiClient.Flush();</code></pre>
 <!-- /wp:paragraph -->
 
 <!-- wp:paragraph -->
-<p>The data volume that a single Application Insights service can ingest is pretty impressive, so this should work for all but the most extreme usage scenarios. </p>
+<p>The data volume that a single Application Insights service can ingest is pretty impressive, so this usually works for all but the most extreme usage scenarios. </p>
 <!-- /wp:paragraph -->
 
 <!-- wp:heading {"level":4} -->
@@ -180,11 +180,47 @@ aiClient.Flush();</code></pre>
 <!-- /wp:paragraph -->
 
 <!-- wp:paragraph -->
-<p>We can drive alerts and metrics from specific event names, so we should treat them as string constants. I also find it helpful to add pinning unit tests that ensure the value of the event name constants don't change. The reason for this is that changing the event names could impact existing alerts or metrics. </p>
+<p>We can drive alerts and metrics from specific event names, so we should treat them as string constants. I also find it helpful to add pinning unit tests that ensure the value of the event name constants don't change. The reason for this is that changing the event names could impact existing alerts or metrics in use in downstream resources (like dashboards or incident management systems). </p>
 <!-- /wp:paragraph -->
 
 <!-- wp:heading {"level":4} -->
-<h4>6. Leverage the dependency tracking features.</h4>
+<h4>6. Use events to track progress through multi-stage transactions.</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Logging App Insights events at each stage of a multi-stage transaction is really helpful for debugging. This is used in conjunction with #2 (correlation IDs).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>For example lets assume we have an multi-stage transaction for registering a new user. It performs a few actions like creating a new user account record in the database, sending a new user email confirmation, etc. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Write up a table of the transaction steps (example below) and then log successful and failed events that are essentially checkpoints along the transaction.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:table -->
+<figure class="wp-block-table"><table class=""><tbody><tr><td><strong>Order</strong></td><td><strong>Description</strong></td><td><strong>Successful Events</strong></td><td><strong>Failure Events</strong></td></tr><tr><td>1</td><td>Create user account record</td><td><em>NewUserCreated</em></td><td><em>NewUserCreationFailed</em></td></tr><tr><td>2</td><td>Send new user registration email</td><td><em>NewUserEmailSent</em></td><td><em>NewUserEmailFailed</em></td></tr><tr><td>3</td><td>Save user profile settings</td><td><em>NewUserProfileSet</em></td><td><em>NewUserProfileSetFailed</em></td></tr><tr><td>4</td><td>Apply promo credits</td><td><em>AppliedPromoCredits</em></td><td><em>PromoCreditApplyFailed</em></td></tr></tbody></table></figure>
+<!-- /wp:table -->
+
+<!-- wp:paragraph -->
+<p>Paired with the correlation ID, we could search on this ID and find that the events logged for that transaction easily pinpoint the exact failed stage.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>7. Supply custom properties for more context.</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The App Insights client Track() methods provide an optional parameter that allows you to specific a custom property bag (dictionary) (<a href="https://docs.microsoft.com/en-us/dotnet/api/microsoft.applicationinsights.telemetryclient.trackevent?view=azure-dotnet#Microsoft_ApplicationInsights_TelemetryClient_TrackEvent_System_String_System_Collections_Generic_IDictionary_System_String_System_String__System_Collections_Generic_IDictionary_System_String_System_Double__">see here</a>). You can leverage this to provide more application specific context about telemetry you send. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>For example you may want to pass a customer ID, or an order number into the properties for an event. This makes it easier to search for relevant events when debugging.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>8. Leverage the dependency tracking features.</h4>
 <!-- /wp:heading -->
 
 <!-- wp:paragraph -->
@@ -192,7 +228,7 @@ aiClient.Flush();</code></pre>
 <!-- /wp:paragraph -->
 
 <!-- wp:heading {"level":4} -->
-<h4>7. Use multi-dimensional metrics to enable better charts</h4>
+<h4>9. Use multi-dimensional metrics to enable better charts.</h4>
 <!-- /wp:heading -->
 
 <!-- wp:paragraph -->
