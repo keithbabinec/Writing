@@ -1,0 +1,330 @@
+<!-- wp:paragraph -->
+<p>I wrote an MSDN blog post a few years back (<a href="https://blogs.msdn.microsoft.com/kebab/2014/04/28/executing-powershell-scripts-from-c/">here</a>) that demonstrated how to run PowerShell scripts by hosting the PowerShell runtime inside a C# / .NET application. A few things have changed since that post; including the introduction of .NET Core and PowerShell Core, better async support, and a few new best practices.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>In this article we will jump forward to take a look at runspace execution for PowerShell Core and .NET Core applications. Including topics like project setup, runspace usage examples, stream redirection, shared app domain use cases, and some helpful troubleshooting tips. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Full sample code</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Complete example code for everything in this post can be found on Github at this repository: <a href="https://github.com/keithbabinec/PowerShellHostedRunspaceStarterkits">https://github.com/keithbabinec/PowerShellHostedRunspaceStarterkits</a></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Project setup</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Start by creating a new .NET Core console application. Then add a package reference to the <a href="https://docs.microsoft.com/en-us/powershell/scripting/developer/windows-powershell?view=powershell-7">PowerShell SDK</a>. At the time of this writing, I'm using .NET Core 3.1 with version 6.2.4 of the PowerShell SDK. This is the foundation step for all three of the example scenarios below.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code">Install-Package Microsoft.PowerShell.SDK</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Example 1 (Default runspace)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>For the first example we are going to show the bare minimum code to run a script with a couple of input parameters, under the default <a href="https://docs.microsoft.com/en-us/dotnet/api/system.management.automation.runspaces.runspace?view=pscore-6.2.0">runspace</a>, and printing the resulting pipeline objects.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4><em><strong>Sidebar: What is a runspace?</strong></em></h4>
+<!-- /wp:heading -->
+
+<!-- wp:preformatted -->
+<pre class="wp-block-preformatted">A PowerShell runspace executes your script code and maintains context/state for the session (loaded modules, imported functions, remote session state, etc). You can view the current runspaces in any PowerShell session by running the <em>Get-Runspace</em> cmdlet. In this example we use the default runspace.</pre>
+<!-- /wp:preformatted -->
+
+<!-- wp:paragraph -->
+<p>Calling <em><a href="https://docs.microsoft.com/en-us/dotnet/api/system.management.automation.powershell.create?view=pscore-6.2.0">PowerShell.Create()</a></em> will get you a new hosted instance of PowerShell you can use within your .NET process. We call the <em>.AddScript()</em> and <em>.AddParameters()</em> methods to pass our input, and then call <em>.InvokeAsync()</em> to execute the pipeline.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>After the pipeline finishes we print any objects that were sent to the pipeline/output stream. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp"} -->
+<pre class="wp-block-syntaxhighlighter-code">/// &lt;summary>
+/// Runs a PowerShell script with parameters and prints the resulting pipeline objects to the console output. 
+/// &lt;/summary>
+/// &lt;param name="scriptContents">The script file contents.&lt;/param>
+/// &lt;param name="scriptParameters">A dictionary of parameter names and parameter values.&lt;/param>
+public async Task RunScript(string scriptContents, Dictionary&lt;string, object> scriptParameters)
+{
+  // create a new hosted PowerShell instance using the default runspace.
+  // wrap in a using statement to ensure resources are cleaned up.
+  
+  using (PowerShell ps = PowerShell.Create())
+  {
+    // specify the script code to run.
+    ps.AddScript(scriptContents);
+    
+    // specify the parameters to pass into the script.
+    ps.AddParameters(scriptParameters);
+    
+    // execute the script and await the result.
+    var pipelineObjects = await ps.InvokeAsync().ConfigureAwait(false);
+    
+    // print the resulting pipeline objects to the console.
+    foreach (var item in pipelineObjects)
+    {
+      Console.WriteLine(item.BaseObject.ToString());
+    }
+  }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Example 2 (Custom runspace pool)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The previous example works fine in many simple hosted script scenarios. However if you need to handle additional stream output (warnings, non-terminating errors, etc), or if you need to execute many scripts simultaneously, this example will demonstrate those usage patterns. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4><strong><em>Sidebar: What are PowerShell streams?</em></strong></h4>
+<!-- /wp:heading -->
+
+<!-- wp:preformatted -->
+<pre class="wp-block-preformatted">PowerShell uses Piping (|) to pass objects from one cmdlet to another. In order to differentiate between pipeline objects and other output (errors, warnings, traces, etc), PowerShell writes objects to the different streams (or pipes) for these different types of data. That way the next cmdlet in the chain can just watch the Output stream and ignore the other streams.</pre>
+<!-- /wp:preformatted -->
+
+<!-- wp:paragraph -->
+<p>In this example we initialize and use a <a href="https://docs.microsoft.com/en-us/dotnet/api/system.management.automation.runspaces.runspacepool?view=pscore-6.2.0">RunspacePool</a>. Maintaining a runspace pool is helpful for multithreading scenarios where you need to run many scripts at the same time and have control over the throttle settings. It also allows us to import modules for each runspace used, configure thread re-use options, or specify remote connection settings.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>We also watch for three of the other output streams (warning, error, and information). This is helpful if we need to monitor things other than pipeline output, like Write-Host/Write-Information.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp"} -->
+<pre class="wp-block-syntaxhighlighter-code">using System;
+using System.Collections.Generic;
+using System.Management.Automation;
+using System.Management.Automation.Runspaces;
+using System.Threading.Tasks;
+
+namespace CustomRunspaceStarter
+{
+  /// &lt;summary>
+  /// Contains functionality for executing PowerShell scripts.
+  /// &lt;/summary>
+  public class HostedRunspace
+  {
+    /// &lt;summary>
+    /// The PowerShell runspace pool.
+    /// &lt;/summary>
+    private RunspacePool RsPool { get; set; }
+    
+    /// &lt;summary>
+    /// Initialize the runspace pool.
+    /// &lt;/summary>
+    /// &lt;param name="minRunspaces">&lt;/param>
+    /// &lt;param name="maxRunspaces">&lt;/param>
+    public void InitializeRunspaces(int minRunspaces, int maxRunspaces, string[] modulesToLoad)
+    {
+      // create the default session state.
+      // session state can be used to set things like execution policy, language constraints, etc.
+      // optionally load any modules (by name) that were supplied.
+      
+      var defaultSessionState = InitialSessionState.CreateDefault();
+      defaultSessionState.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.Unrestricted;
+      
+      foreach (var moduleName in modulesToLoad)
+      {
+        defaultSessionState.ImportPSModule(moduleName);
+      }
+      
+      // use the runspace factory to create a pool of runspaces
+      // with a minimum and maximum number of runspaces to maintain.
+      
+      RsPool = RunspaceFactory.CreateRunspacePool(defaultSessionState);
+      RsPool.SetMinRunspaces(minRunspaces);
+      RsPool.SetMaxRunspaces(maxRunspaces);
+      
+      // set the pool options for thread use.
+      // we can throw away or re-use the threads depending on the usage scenario.
+      
+      RsPool.ThreadOptions = PSThreadOptions.UseNewThread;
+      
+      // open the pool. 
+      // this will start by initializing the minimum number of runspaces.
+      
+      RsPool.Open();
+    }
+    
+    /// &lt;summary>
+    /// Runs a PowerShell script with parameters and prints the resulting pipeline objects to the console output. 
+    /// &lt;/summary>
+    /// &lt;param name="scriptContents">The script file contents.&lt;/param>
+    /// &lt;param name="scriptParameters">A dictionary of parameter names and parameter values.&lt;/param>
+    public async Task RunScript(string scriptContents, Dictionary&lt;string, object> scriptParameters)
+    {
+      if (RsPool == null)
+      {
+        throw new ApplicationException("Runspace Pool must be initialized before calling RunScript().");
+      }
+      
+      // create a new hosted PowerShell instance using a custom runspace.
+      // wrap in a using statement to ensure resources are cleaned up.
+      
+      using (PowerShell ps = PowerShell.Create())
+      {
+        // use the runspace pool.
+        ps.RunspacePool = RsPool;
+        
+        // specify the script code to run.
+        ps.AddScript(scriptContents);
+        
+        // specify the parameters to pass into the script.
+        ps.AddParameters(scriptParameters);
+        
+        // subscribe to events from some of the streams
+        ps.Streams.Error.DataAdded += Error_DataAdded;
+        ps.Streams.Warning.DataAdded += Warning_DataAdded;
+        ps.Streams.Information.DataAdded += Information_DataAdded;
+        
+        // execute the script and await the result.
+        var pipelineObjects = await ps.InvokeAsync().ConfigureAwait(false);
+        
+        // print the resulting pipeline objects to the console.
+        Console.WriteLine("----- Pipeline Output below this point -----");
+        foreach (var item in pipelineObjects)
+        {
+          Console.WriteLine(item.BaseObject.ToString());
+        }
+      }
+    }
+    
+    /// &lt;summary>
+    /// Handles data-added events for the information stream.
+    /// &lt;/summary>
+    /// &lt;remarks>
+    /// Note: Write-Host and Write-Information messages will end up in the information stream.
+    /// &lt;/remarks>
+    /// &lt;param name="sender">&lt;/param>
+    /// &lt;param name="e">&lt;/param>
+    private void Information_DataAdded(object sender, DataAddedEventArgs e)
+    {
+      var streamObjectsReceived = sender as PSDataCollection&lt;InformationRecord>;
+      var currentStreamRecord = streamObjectsReceived[e.Index];
+      
+      Console.WriteLine($"InfoStreamEvent: {currentStreamRecord.MessageData}");
+    }
+    
+    /// &lt;summary>
+    /// Handles data-added events for the warning stream.
+    /// &lt;/summary>
+    /// &lt;param name="sender">&lt;/param>
+    /// &lt;param name="e">&lt;/param>
+    private void Warning_DataAdded(object sender, DataAddedEventArgs e)
+    {
+      var streamObjectsReceived = sender as PSDataCollection&lt;WarningRecord>;
+      var currentStreamRecord = streamObjectsReceived[e.Index];
+      
+      Console.WriteLine($"WarningStreamEvent: {currentStreamRecord.Message}");
+    }
+    
+    /// &lt;summary>
+    /// Handles data-added events for the error stream.
+    /// &lt;/summary>
+    /// &lt;remarks>
+    /// Note: Uncaught terminating errors will stop the pipeline completely.
+    /// Non-terminating errors will be written to this stream and execution will continue.
+    /// &lt;/remarks>
+    /// &lt;param name="sender">&lt;/param>
+    /// &lt;param name="e">&lt;/param>
+    private void Error_DataAdded(object sender, DataAddedEventArgs e)
+    {
+      var streamObjectsReceived = sender as PSDataCollection&lt;ErrorRecord>;
+      var currentStreamRecord = streamObjectsReceived[e.Index];
+      
+      Console.WriteLine($"ErrorStreamEvent: {currentStreamRecord.Exception}");
+    }
+  }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Shared App Domain</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>One final example I created explores the shared <a href="https://docs.microsoft.com/en-us/dotnet/framework/app-domains/application-domains">.NET Application Domain</a>. Since a hosted PowerShell runspace lives in the same .NET app domain as your calling application, you can do the following:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Send real (not serialized) class object instances defined in your hosting application as parameters into a script.</li><li>Instantiate class object instances in the script (for types defined in your hosting application).</li><li>Call static methods on types defined in your hosting application.</li><li>Return class objects to the pipeline.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>The sample code for this one is pretty lengthy, so head over to the <a href="https://github.com/keithbabinec/PowerShellHostedRunspaceStarterkits/tree/master/SharedAppDomainStarter">Github repo</a> to view the full example.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>You can leverage the code in this example to do things like:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Pass rich objects between different scripts in a multi-step pipeline.</li><li>Provide pre-configured complex class instances in as parameters that may be easier to configure in .NET than in PowerShell.</li><li>Return a results/summary class object to the pipeline, instead of a large array of pipeline objects you need to interpret to determine if the script was successful or not.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Common problems</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Here are a few of the common pitfalls that you might encounter when running hosted PowerShell scripts:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Execution policy</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Executing scripts can fail if your execution policy is configured to prevent scripts from running. You may need to change your execution policy to resolve this. Read more <a href="https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-7">here</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Pipeline errors</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Terminating errors are the fatal errors that can occur inside your script code. If this happens the pipeline stops immediately and <em>.InvokeAsync()</em> will throw an exception. Implement error handling in your scripts to resolve this. Read more <a href="https://docs.microsoft.com/en-us/archive/blogs/kebab/an-introduction-to-error-handling-in-powershell">here</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Pipeline output types</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>If your script pipeline output is printing objects to the console with <em>.ToString()</em> like the examples above do, then you may see type names printed in some cases. For example: a script calling the <em>Get-Service</em> cmdlet would show this in your console output repeated several times: "<em>System.ServiceProcess.ServiceController</em>".</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>This is expected behavior because the pipeline returns real class objects. The Get-Service command returns <a href="https://docs.microsoft.com/en-us/dotnet/api/system.serviceprocess.servicecontroller?view=netframework-4.8">this type</a>. For .NET types that do not implement a custom ToString() override, the type name will be printed instead. To solve this you can reach into the object and pull out or print other properties you need (like &lt;serviceobject>.ServiceName).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":4} -->
+<h4>Module loading problems</h4>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Trying to load a module inside your script and it isn't loading? Check the basics: </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Is the module actually installed on the system?</li><li>Is the module supported in PowerShell Core? Or is it a legacy PowerShell module?</li><li>Is it the correct bitness? PowerShell comes in x86 and x64 architectures, and some modules only work in one architecture.</li></ol>
+<!-- /wp:list -->
