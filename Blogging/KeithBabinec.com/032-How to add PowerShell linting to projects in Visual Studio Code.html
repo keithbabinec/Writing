@@ -1,0 +1,118 @@
+<!-- wp:paragraph -->
+<p>Linting tools provide a way for us to automatically analyze source code to find bugs and style problems. Adding these tools to your project will help enforce coding best practices and maintain them as the project grows. In this post we demonstrate how to configure linting for PowerShell code projects in the Visual Studio Code editor using the <a href="https://github.com/PowerShell/PSScriptAnalyzer">PSScriptAnalyzer</a> toolset.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Step 1: Add the PowerShell VSCode extension</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>If you have been working on PowerShell code projects in <a href="https://code.visualstudio.com/">VSCode</a>, then chances are you may have this extension installed already. This is because VSCode usually prompts you to install the extension when you open PowerShell files. In case you don't have it installed: </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Navigate to the <em>File menu</em> > <em>Preferences </em>> <em>Extensions</em>. In the search box, search for the extension named <strong>PowerShell</strong> and hit install. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Step 2: Add the script analyzer settings file</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>PSScriptAnalyzer uses a settings file to describe which rules to enforce in your project. In the root of your project create a new file called <em>ScriptAnalyzerSettings.psd1</em>. The <a href="https://github.com/PowerShell/Plaster">Plaster</a> project on Github has a nice example settings file <a href="https://github.com/PowerShell/Plaster/blob/master/ScriptAnalyzerSettings.psd1">here</a>, which is a good starting point:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code">@{
+    # Use Severity when you want to limit the generated diagnostic records to a
+    # subset of: Error, Warning and Information.
+    # Uncomment the following line if you only want Errors and Warnings but
+    # not Information diagnostic records.
+    Severity = @('Error','Warning')
+
+    # Use IncludeRules when you want to run only a subset of the default rule set.
+    #IncludeRules = @('PSAvoidDefaultValueSwitchParameter',
+    #                 'PSMissingModuleManifestField',
+    #                 'PSReservedCmdletChar',
+    #                 'PSReservedParams',
+    #                 'PSShouldProcess',
+    #                 'PSUseApprovedVerbs',
+    #                 'PSUseDeclaredVarsMoreThanAssigments')
+
+    # Use ExcludeRules when you want to run most of the default set of rules except
+    # for a few rules you wish to "exclude".  Note: if a rule is in both IncludeRules
+    # and ExcludeRules, the rule will be excluded.
+    ExcludeRules = @(
+        'PSAvoidUsingWriteHost',
+        'PSMissingModuleManifestField'
+    )
+
+    # You can use the following entry to supply parameters to rules that take parameters.
+    # For instance, the PSAvoidUsingCmdletAliases rule takes a whitelist for aliases you
+    # want to allow.
+    #Rules = @{
+    #    Do not flag 'cd' alias.
+    #    PSAvoidUsingCmdletAliases = @{Whitelist = @('cd')}
+
+    #    Check if your script uses cmdlets that are compatible on PowerShell Core,
+    #    version 6.0.0-alpha, on Linux.
+    #    PSUseCompatibleCmdlets = @{Compatibility = @("core-6.0.0-alpha-linux")}
+    #}
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Ruleset documentation</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>A complete list of all the rules can be found in the PSScriptAnalyzer repository <a href="https://github.com/PowerShell/PSScriptAnalyzer/blob/master/RuleDocumentation/README.md">here</a>. Clicking on each rule in the list will lead you directly to the documentation for that rule which includes the pass/fail examples and configuration options (if applicable).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Step 3: Update the VSCode workspace settings.</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>PSScriptAnalyzer is bundled with the PowerShell extension. In order to have automatic linting with our settings we need to update the PowerShell extension settings to specify the location of the script analyzer settings file.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Go back to the VSCode extensions panel and find the PowerShell extension. Click <em>manage</em> (gear icon), then <em>configure extension settings</em>. Under the workspace settings find: <em><strong>PowerShell › Script Analysis: Settings Path</strong></em>. Add the name of settings file here (PSScriptAnalyzerSettings.psd1).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If haven't already created any workspace scoped settings, then you will see a new file in the root called <strong>.vscode\settings.json</strong>. In that settings file the <em>powershell.scriptAnalysis.settingsPath</em> setting should now be present.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If you check the settings.json file and the script analyzer settings file into source control with the rest of your code, then anyone else who pulls down the repository will automatically receive the linting if they have the PowerShell extension installed. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong><em>Note: </em></strong>To have linting rules enforced as a part of a continuous integration (CI) pipeline (instead of just locally), you can import the PSScriptAnalyzer toolset and invoke the analysis commands directly (by calling <a href="https://github.com/PowerShell/PSScriptAnalyzer#usage">Invoke-ScriptAnalyzer</a>) within your build steps.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Verification</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>If all 3 steps were performed correctly then PSScriptAnalyzer should automatically start detecting errors when you open up PowerShell files (no need to restart VSCode). These errors will show up in the Problems window in VSCode as seen below: </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1712,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/02/vscodeproblemswindow.png?w=806" alt="" class="wp-image-1712"/><figcaption><em>Problems</em> window in VSCode.</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Handling rule suppression</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>There may be some cases where you need to suppress a linting rule for a particular cmdlet/function file. There is an attribute in .NET for suppressing code analysis rules called <a href="https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.codeanalysis.suppressmessageattribute?view=netframework-4.8">SuppressMessageAttribute</a> and PSScriptAnalyzer supports this too. Suppression examples can be found <a href="https://github.com/PowerShell/PSScriptAnalyzer#suppressing-rules">here</a>.</p>
+<!-- /wp:paragraph -->
