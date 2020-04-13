@@ -1,0 +1,159 @@
+<!-- wp:paragraph -->
+<p><a href="https://powerbi.microsoft.com/en-us/">Power BI</a> makes it really easy to import data, create reports with rich visuals, and then gain insights to make decisions. However one of the tricky things that I found when learning Power BI was that most of the example datasets were for sales and marketing data. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>When should you use a bar chart? A donut chart? A funnel chart? Existing tutorials answer these questions fine-- but what if you have telemetry or metrics for software projects? </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>In this post I share some Power BI chart and data model examples that are bit more relevant for software engineers. This makes it easier to build the best possible dashboards for your software or production systems telemetry.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>Power BI chart selection examples</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>When it comes to Power BI basics and selecting the right visuals (charts) for each data category, I learned a lot from <a href="https://www.amazon.com/Microsoft-Power-BI-Dashboards-Step/dp/1509308032">Microsoft Power BI Dashboards Step by Step</a> by Errin O'Connor. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I constructed this table with information from that book along with trial and error for <a href="https://keithbabinec.com/2019/11/01/azure-application-insights-series-part-1-how-to-instrument-your-application-code-for-monitoring/">software telemetry/metrics</a>. This table is by no means exhaustive, but it should provide a helpful starting point for choosing the right chart for your metric or dataset.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The key to proper chart selection is to identify the focus of the data that you want to display. Is the visual going to be focused on incremental changes? Is it time-series based? Is it hierarchical? Once you have determined its key focus (classification), it becomes easy to select a chart based on the table below.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:table {"className":"is-style-stripes"} -->
+<figure class="wp-block-table is-style-stripes"><table><thead><tr><th>Data types</th><th>Example Scenarios</th><th>Power BI Charts</th></tr></thead><tbody><tr><td><strong>Categorical data</strong></td><td>• Exception count by exception type<br>• Exception count by service name<br>• Service response time (latency) by service name</td><td>• Stacked Bar/Column chart<br>• Clustered Bar/Column chart<br>• 100% stacked bar chart<br>• Ribbon chart</td></tr><tr><td><strong>Time based data </strong><br><br><em>(Data that changes over time)</em></td><td>• New user registrations over rolling 12 month window<br>• Year-to-date (YTD) live-site / production incidents</td><td>• Line chart<br>• Area chart<br>• Stacked area chart<br>• Combo line/column charts</td></tr><tr><td><strong>Incremental changes</strong><br><br><em>(Running totals as values are added or subtracted<br>showing progress)</em></td><td>• Month-over-month count/variance of open bugs</td><td>• Waterfall chart</td></tr><tr><td><strong>Progress data</strong><br><br><em>(Progress towards a goal or KPI shown as a circular arc)</em></td><td>• Number of user stories completed against the sprint goal</td><td>• Gauge chart</td></tr><tr><td><strong>Hierarchical data</strong></td><td>• Storage capacity utilized by database cluster and database name</td><td>• Treemap chart</td></tr><tr><td><strong>Related number sets</strong> (X,Y)<br><br><em>(Shows the relationship between 2 (scatter) or 3 (bubble) numerical values)</em></td><td>• Requests per hour with average latency, grouped by service component</td><td>• Scatter chart<br>• Bubble chart</td></tr><tr><td><strong>Proportional data</strong><br><br><em>(Illustrates proportion or percentage of whole)</em></td><td>• Service <a href="https://keithbabinec.com/2019/10/15/tracking-and-classifying-azure-devops-work-items-in-sre-toil-budgets/">toil hours</a> by engineer</td><td>• Pie chart<br>• Donut chart</td></tr><tr><td><strong>Linear data </strong><br><br><em>(connected stages)</em></td><td>• User registration/signup flow tracker</td><td>• Funnel chart</td></tr><tr><td><strong>Scalar values</strong></td><td>• Service component uptime percentage</td><td>• Cards<br>• Multi-row cards</td></tr><tr><td><strong>Target measure / thresholds</strong></td><td>• Average request latency time against target<br>• Service throughput/saturation against capacity limits</td><td>• KPI chart</td></tr><tr><td><strong>Geospatial data</strong></td><td>• Number of image uploads by geolocation</td><td>• Bubble map<br>• Filled map<br>• ArcGIS map</td></tr></tbody></table></figure>
+<!-- /wp:table -->
+
+<!-- wp:heading -->
+<h2>Example data models</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Modeling the underlying data source for each chart type can be confusing. To help you get started I have posted all of the <em>.csv</em> files used below on <a href="https://github.com/keithbabinec/PowerBISamples/tree/master/ChartTypeDataExamples">this Github repo</a>. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>These <em>.csv</em> files contain just the minimal amount of fields to construct the charts-- all other non-relevant items are removed. This should make it easier to understand which fields are truly necessary to build charts. Real production telemetry would contain significantly more fields and data.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Example chart screenshots</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>For illustration purposes I have included screenshots for many of the Power BI charts referenced in the table above. In case you don't know what the funnel chart is supposed to look like for example, you can see it here.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>Note: Some of the charts below use <a href="https://docs.microsoft.com/en-us/power-bi/visuals/power-bi-visualization-slicers">slicers</a>. These are optional visuals that help 'slice' your data by an additional dimension and you can watch the chart visual change in real time.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Bar chart (categorical data example 1)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1767,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/barchartexample.png?w=1024" alt="" class="wp-image-1767"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Column chart (categorical data example 2)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><em>Same underlying .csv data as previous chart, just sliced and displayed differently.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1768,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/columnchartexample-1.png?w=1024" alt="" class="wp-image-1768"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Line chart (time based data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1754,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/linechartexample.png?w=1024" alt="" class="wp-image-1754"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Waterfall chart (incremental data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1755,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/waterfallchartexample.png?w=1024" alt="" class="wp-image-1755"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Gauge chart (progress data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1756,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/gaugechartexample.png?w=1024" alt="" class="wp-image-1756"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Treemap chart (hierarchical data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1757,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/treemapchartexample.png?w=1024" alt="" class="wp-image-1757"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Bubble chart (related number sets data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1758,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/bubblechartexample.png?w=1024" alt="" class="wp-image-1758"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Donut chart (proportional data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1759,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/donutchartexample.png?w=1024" alt="" class="wp-image-1759"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Funnel chart (linear stages data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1760,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/funnelchartexample.png?w=1024" alt="" class="wp-image-1760"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Card chart (scalar value data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1761,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/cardexample.png?w=1024" alt="" class="wp-image-1761"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>KPI chart (target measure / thresholds data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1762,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/kpichartexample.png?w=1024" alt="" class="wp-image-1762"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Bubble map chart (geospatial data)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":1763,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/04/mapchartexample.png?w=1024" alt="" class="wp-image-1763"/></figure>
+<!-- /wp:image -->
