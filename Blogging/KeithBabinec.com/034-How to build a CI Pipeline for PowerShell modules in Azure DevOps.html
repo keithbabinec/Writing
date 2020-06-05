@@ -1,0 +1,296 @@
+<!-- wp:paragraph -->
+<p>In this post we will do a complete walkthrough for configuring a new continuous integration (CI) pipeline that builds PowerShell modules in Azure DevOps Pipelines. Formalizing your PowerShell build steps into a CI pipeline helps enforce code quality standards and setup a fully automated process for publishing.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I have covered some of these pieces individually in other posts; for example my module starter kit and linting configurations. However a full post is helpful to tie all the pieces together in a detailed guide. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>Overview</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>There are a lot of moving parts here, so let's start with an overview. The following items will be covered:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li><a href="#environment-prerequisites">Environment prerequisites</a>.</li><li><a href="#module-setup" data-type="#module-setup">New PowerShell module setup</a>.</li><li><a href="#devops-pipeline">Building the Azure DevOps pipeline</a>.</li><li><a href="#artifact-publishing-strategies" data-type="#artifact-publishing-strategies">Artifact publishing strategies</a>.</li><li><a href="#configuring-branch-policies" data-type="#configuring-branch-policies">Configuring branch policies</a>.</li><li><a href="#testing-the-pipeline" data-type="#testing-the-pipeline">Testing the pipeline</a>.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p><em>Source code used in this tutorial:</em> <a href="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit" data-type="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit">Github project link</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1834,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/06/azdo-pipeline-overall.png?w=1024" alt="" class="wp-image-1834"/><figcaption><em>PowerShell pipeline example</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2 id="environment-prerequisites">Environment Prerequisites</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>You will need an Azure DevOps account. You can create one for free <a href="https://azure.microsoft.com/en-us/services/devops/">here</a>. You need an Azure DevOps <a href="https://docs.microsoft.com/en-us/azure/devops/organizations/accounts/create-organization">organization</a> and <a href="https://docs.microsoft.com/en-us/azure/devops/organizations/projects/create-project">project</a> to be in place before getting started as well.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Once you have those things in place, create a new git repository for your new project and then clone it to your computer. Instructions for creating and cloning a git repository from Azure DevOps can be <a href="https://docs.microsoft.com/en-us/azure/devops/repos/git/create-new-repo">found here</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 id="module-setup">New PowerShell module setup</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>After the git repository is cloned to your computer, you can setup the module scaffolding. These are the project files/folders used by most projects. This helps keep your project organized according to best practices.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>You can use a module generator such as <a href="https://github.com/PowerShell/Plaster">Plaster</a> or borrow the structure from an already configured demo module. I have two example starters on my Github that may be helpful:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Example Module 1:</strong> <a href="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit" data-type="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit">PowerShellCiPipelineStarterKit</a>. Stripped down module example used in this post that includes Azure DevOps CI pipeline support.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Example Module 2:</strong> <a href="https://github.com/keithbabinec/PowerShellModuleStarterKit" data-type="https://github.com/keithbabinec/PowerShellModuleStarterKit">PowerShellModuleStarterKit</a>. More full featured module sample that demonstrates features like classes, external library references, private module data usage, and static resource files.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Move onto the next step once you have your module scaffolding and at least one function and one (<a href="https://github.com/pester/Pester" data-type="https://github.com/pester/Pester">Pester</a>) unit test in place.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 id="devops-pipeline">Building the Azure DevOps pipeline</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Azure DevOps CI pipelines are defined by <a href="https://docs.microsoft.com/en-us/azure/devops/pipelines/yaml-schema" data-type="https://docs.microsoft.com/en-us/azure/devops/pipelines/yaml-schema">YAML configuration files</a> stored in source control. At a high level, this is what we want our pipeline definition to look like:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Declare pipeline triggers (when/how this pipeline is kicked off).</li><li>Declare the base image and supporting variables.</li><li>Build stage: Run style checks (linting), run unit test suite, publish test results.</li><li>Release stage: Package and publish artifacts.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>The main action for this step is to add your Pipeline.yaml file to the repository with your build steps. The example below leverages built-in tasks like <em><strong>CopyFiles</strong></em>, <em><strong>PublishBuildArtifacts</strong></em>, and <em><strong>PowerShell</strong></em>. Style checks and unit testing steps are defined as PowerShell scripts under the <strong>\Pipeline</strong> folder in the repository and referenced in the YAML file. This helps keep the YAML pipeline file a bit cleaner.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>Note: The publish step used here is a simple flat file publish for demo purposes but we will cover additional publishing strategies in a section further down.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>File on Github with syntax highlighting here:</em> <a href="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit/blob/master/Pipeline.yaml" data-type="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit/blob/master/Pipeline.yaml">Pipeline.yaml</a></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code -->
+<pre class="wp-block-syntaxhighlighter-code"># Azure DevOps YAML pipeline
+# Schema/help: https://aka.ms/yaml
+
+trigger:
+- master
+
+pr:
+  branches:
+    include:
+      - '*'
+
+pool:
+  vmImage: windows-latest
+
+variables:
+- name: ModPath
+  value: $(Build.SourcesDirectory)\MyModule
+- name: PSScriptAnalyzerVersion
+  value: 1.19.0
+- name: LinterSettings
+  value: $(Build.SourcesDirectory)\PSScriptAnalyzerSettings.psd1
+- name: PesterVersion
+  value: 4.10.1
+- name: TestResultsFile
+  value: $(Build.ArtifactStagingDirectory)\MyModuleUnitTestResults.xml
+
+stages:
+- stage: Build
+  displayName: Lint and Test
+  jobs:
+    - job: Default
+      steps:
+        - task: PowerShell@2
+          name: Linter
+          displayName: Run PSScriptAnalyzer Linter
+          inputs:
+            targetType: filePath
+            filePath: $(Build.SourcesDirectory)\Pipeline\Invoke-LinterStep.ps1
+            arguments: -ModulePath $(ModPath) -LinterSettingsPath $(LinterSettings) -AnalyzerVersion $(PSScriptAnalyzerVersion)
+            errorActionPreference: stop
+            failOnStderr: true
+            pwsh: true
+        - task: PowerShell@2
+          name: UnitTests
+          displayName: Run Pester Unit Tests
+          inputs:
+            targetType: filePath
+            filePath: $(Build.SourcesDirectory)\Pipeline\Invoke-UnitTestsStep.ps1
+            arguments: -ModulePath $(ModPath) -PesterVersion $(PesterVersion) -TestResultsFilePath $(TestResultsFile)
+            errorActionPreference: stop
+            failOnStderr: true
+            pwsh: true
+        - task: PublishTestResults@2
+          name: TestResults
+          displayName: Publish Unit Test Results
+          condition: always()
+          inputs:
+            testResultsFormat: NUnit
+            testResultsFiles: $(TestResultsFile)
+
+- stage: Release
+  displayName: Package and Publish
+  condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/heads/master'))
+  jobs: 
+    - job: Default
+      steps:
+        - task: CopyFiles@2
+          name: Package
+          displayName: Package Flat Files
+          inputs:
+            sourceFolder: $(ModPath)
+            contents: |
+              **
+              !Tests/**
+            targetFolder: $(Build.ArtifactStagingDirectory)\drop
+        - task: PublishBuildArtifacts@1
+          name: Publish
+          displayName: Publish Flat Files
+          inputs:
+            pathToPublish: $(Build.ArtifactStagingDirectory)\drop
+            artifactName: MyModule-Drop
+            publishLocation: Container</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>The scripts referenced here will run the style checks (linting) with PSScriptAnalyzer and run the unit tests with the Pester framework. You can find those files in the sample module as well under <a href="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit/blob/master/Pipeline/Invoke-LinterStep.ps1" data-type="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit/blob/master/Pipeline/Invoke-LinterStep.ps1">Invoke-LinterStep.ps1</a> and <a href="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit/blob/master/Pipeline/Invoke-UnitTestsStep.ps1" data-type="https://github.com/keithbabinec/PowerShellCiPipelineStarterKit/blob/master/Pipeline/Invoke-UnitTestsStep.ps1">Invoke-UnitTestsStep.ps1</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Once you have your YAML pipeline file and build scripts checked in, you can create the new pipeline from the YAML definition:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>In Azure DevOps, select the <strong><em>Pipelines</em></strong> section.</li><li>Click on <strong><em>Create Pipeline</em></strong>.</li><li>Select <strong><em>Azure Repos Git (YAML)</em></strong> from the <strong><em>Where is your code? </em></strong>section.</li><li>Select your git repository.</li><li>Select <strong><em>Existing Azure Pipelines YAML file</em></strong> and choose your pipeline file from the file browser.</li><li>On the <strong><em>Review</em></strong> window, click <strong><em>Save</em></strong>.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>When you have reached this point any check-ins to this repository or pull requests will trigger your pipeline. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>Note: PR builds will not trigger the release/publish phase based on the conditional check in that stage.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 id="artifact-publishing-strategies">Artifact publishing strategies</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>There are several different artifact publishing options available. Our example above used a flat files method, where we simply copied the module contents into a folder and published it as a folder artifact in the Azure DevOps artifact feeds.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong><em>Flat files publish</em></strong>: This approach is nice if your module is meant for private usage and the functions are mostly consumed by other CI pipelines in the same Azure DevOps organization. The reason is that Azure DevOps pipelines can easily pull down the correct/latest version of flat file artifacts from your internal feed and then other pipeline scripts can simply import the module by path from the extracted artifacts folder.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong><em>Public module publish</em></strong>: If your module is meant for public usage and you need to publish the module to PSGallery, then you need to follow these general steps:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Have a PSGallery account and API key. Store this API key in Azure KeyVault (not in your YAML pipeline file). </li><li>Ensure your module manifest (.psd1 file) has the correct/updated metadata including module version before you publish.</li><li>Call <strong><em>Publish-Module</em></strong> and specify the path to your module and your PSGallery API key (retrieved from an Azure KeyVault lookup task).</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>More information about PSGallery publishing can be found <a href="https://docs.microsoft.com/en-us/powershell/scripting/gallery/how-to/publishing-packages/publishing-a-package" data-type="https://docs.microsoft.com/en-us/powershell/scripting/gallery/how-to/publishing-packages/publishing-a-package">here</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong><em>Private module publish</em></strong>: If your module is meant for private usage but must be consumed from a module repository, you can package the module as a nuget package and publish it to a nuget feed. A tutorial on that can be found <a href="https://docs.microsoft.com/en-us/azure/devops/artifacts/tutorials/private-powershell-library?view=azure-devops" data-type="https://docs.microsoft.com/en-us/azure/devops/artifacts/tutorials/private-powershell-library?view=azure-devops">here</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 id="configuring-branch-policies">Configuring branch policies</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Final step in the process is to configure branch policies for our repository. This will help ensure that best practices like a pull request + code review process is followed and people don't just check-in directly to master.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Find your Azure DevOps <strong><em>Project Settings</em></strong> (gear icon in the bottom left of the UI).</li><li>Click on <strong><em>Repositories</em></strong> under the <strong><em>Repos </em></strong>heading in the left hand side-bar.</li><li>Find your Git repo in the list and expand the branches to find the <strong><em>master</em></strong> branch, then select it.</li><li>Switch to the <strong><em>Policies </em></strong>tab towards the top of the page.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>These settings are a good starting point, but additional restrictions may be helpful depending on your environment.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>Require a minimum number of reviewers: 1</li><li>Check for linked work items: required (if you use Azure DevOps for work tracking)</li><li>Check for comment resolution: required</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>Next up add a build validation step. This enforces that the build must pass before pull requests can be merged. I also added some automatic code reviewers (in this case, someone from this group must approve before we can merge).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1837,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/06/azdo-pipeline-reviewpolicy.png?w=1024" alt="" class="wp-image-1837"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2 id="testing-the-pipeline">Testing the pipeline</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Once the pipeline is created and we have our branch policies configured we can run through a full test. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>To exercise the entire pipeline:</strong> Create private branch from the repository, change a file, commit those changes, and then open a new pull request in Azure DevOps.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>You will notice a couple things in the Azure DevOps pull request screenshot below:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>A build was automatically triggered because we submitted the PR. It must pass otherwise I cannot merge.</li><li>The PR automatically added my code reviewers group as a required reviewer. </li><li>I can't just approve my own changes, someone else in the reviewers group must approve my changeset.</li><li>If I look at the PR build, the 'package and publish' stage is skipped (because we dont want this running on pull request builds).</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:image {"id":1840,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/06/azdo-pipeline-pr.png?w=1024" alt="" class="wp-image-1840"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>Once I get a code review sign off and complete the pull request, the code change is merged to master and the CI build automatically starts. We can see that ran successfully too but now the build ran the flat files publish steps we had configured just for CI builds:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1843,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/06/azdo-pipeline-ci-build.png?w=1024" alt="" class="wp-image-1843"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>Looking at the build output we can see our test results published and our (flat files) artifact was published. Now we have a fully functional PowerShell pipeline backed by YAML configuration in our repository.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":1844,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/06/azdo-pipeline-test-results.png?w=1024" alt="" class="wp-image-1844"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":1846,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/06/azdo-pipeline-artifacts.png?w=1024" alt="" class="wp-image-1846"/></figure>
+<!-- /wp:image -->
