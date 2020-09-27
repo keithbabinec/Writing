@@ -1,0 +1,175 @@
+<!-- wp:paragraph -->
+<p>One of the most common ways to implement PowerShell error handling is to set the <strong><em>ErrorActionPreference</em></strong> variable (or <em><strong>ErrorAction</strong></em> parameter) to <strong><em>Stop</em></strong>, and capture these errors with a surrounding try/catch block.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>This works perfectly fine in many situations. However one problematic use is when a cmdlet needs to write multiple unique errors to the error stream. One specific example is <a href="https://docs.microsoft.com/en-us/powershell/module/az.resources/new-azresourcegroupdeployment?view=azps-4.4.0" data-type="URL" data-id="https://docs.microsoft.com/en-us/powershell/module/az.resources/new-azresourcegroupdeployment?view=azps-4.4.0">New-AzResourceGroupDeployment</a>, which can write multiple validation or deployment errors if they are encountered. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If you use the standard try/catch approach here then the cmdlet stops after writing the first error (by design-- because you set the action preference). This post provides some tips to handle this scenario to ensure you don't miss the additional error stream records. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>Reproducing the problem</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The following is a PowerShell function example that writes multiple errors to the error stream, using <a href="https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/write-error?view=powershell-7" data-type="URL" data-id="https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/write-error?view=powershell-7">Write-Error</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code">function Invoke-MultipleErrorTest
+{
+  &lt;#
+    .SYNOPSIS
+      Writes multiple errors to the error stream.
+    
+    .DESCRIPTION
+      Writes multiple errors to the error stream.
+    
+    .EXAMPLE
+      PS C:\ Invoke-MultipleErrorTest
+      Writes the test errors to the stream.
+  #>
+  [CmdletBinding()]
+  Param
+  (
+  )
+  Process
+  {
+    Write-Error -Message 'First error: the operation failed.'
+  
+    Write-Error -Message 'Second error: the operation failed: subcode/reasons'
+  
+    Write-Error -Message 'Third error: another error was detected.'
+  }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>Once I copy and paste that function definition into a PowerShell prompt, we can easily reproduce the problem by setting the error action preference to stop. This tells the pipeline to treat these <strong>non-terminating</strong> errors as <strong>terminating</strong> errors which immediately stops the pipeline.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code">try
+{
+  Invoke-MultipleErrorTest -ErrorAction Stop
+  # only the first error is returned.
+  # catch block will be hit.
+}
+catch
+{
+  Write-Output "Catch block reached. Error: $_"
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p><strong>Results for Windows PowerShell 5.1 and PowerShell Core 7.x</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:preformatted -->
+<pre class="wp-block-preformatted">Catch block reached. Error: First error: the operation failed.</pre>
+<!-- /wp:preformatted -->
+
+<!-- wp:paragraph -->
+<p><span style="text-decoration: underline;">Only one error record was written to the stream before our cmdlet stopped processing</span>. Our cmdlet then trigged the surrounding try/catch block and we have lost additional error record context that probably would have been helpful.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Solution</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>There are multiple ways to approach this error handling scenario, but a good starting point is to leverage the common <strong>ErrorVariable</strong> parameter and drop the try/catch block.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If we save the errors for this cmdlet invocation directly into an <strong>ErrorVariable</strong>, we can see if errors have occurred by checking the <strong>.Count</strong> property on this object after the call.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>One thing I also find helpful is to merge the error records found in the <strong>ErrorVariable</strong> into a single summary and then either <strong>Throw</strong> or <strong>Write-Error</strong> the summary message. Here is an example of this pattern:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code">Invoke-MultipleErrorTest -ErrorAction SilentlyContinue -ErrorVariable 'testErrors'
+
+if ($testErrors -ne $null -and $testErrors.Count -gt 0)
+{
+  $uniqueErrorsFound = New-Object -TypeName System.Collections.Generic.List[System.String]
+
+  foreach ($err in $testErrors)
+  {
+    $errStr = $err.ToString().Trim()
+    
+    if ($uniqueErrorsFound.Contains($errStr) -eq $false)
+    {
+      $uniqueErrorsFound.Add($errStr)
+    }
+  }
+  
+  $errorSummary = [System.String]::Join([System.Environment]::NewLine, $uniqueErrorsFound)
+  
+  throw "Invoke-MultipleErrorTest returned these error(s): $errorSummary"
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>Below are the results for when we execute this code block. Both results are from a single throw statement, but they include all three of the errors generated from our sample function. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Results for Windows PowerShell 5.1</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:preformatted -->
+<pre class="wp-block-preformatted">Invoke-MultipleErrorTest returned these error(s): First error: the operation failed.
+Second error: the operation failed: subcode/reasons
+Third error: another error was detected.
+At line:17 char:3
++ throw "Invoke-MultipleErrorTest returned these error(s): $errorSumm ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++ CategoryInfo : OperationStopped: (Invoke-Multiple...r was detected.:String) [], RuntimeException
++ FullyQualifiedErrorId : Invoke-MultipleErrorTest returned these error(s): First error: the operation failed.
+Second error: the operation failed: subcode/reasons
+Third error: another error was detected.</pre>
+<!-- /wp:preformatted -->
+
+<!-- wp:paragraph -->
+<p><strong>Results for PowerShell Core 7.x</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:preformatted -->
+<pre class="wp-block-preformatted">Exception:
+Line |
+17 | throw "Invoke-MultipleErrorTest returned these error(s): $errorSumm …
+| ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+| Invoke-MultipleErrorTest returned these error(s): First error: the operation failed.
+Second error: the operation failed: subcode/reasons
+Third error: another error was detected.</pre>
+<!-- /wp:preformatted -->
+
+<!-- wp:paragraph -->
+<p>Same result in both Windows PowerShell and PowerShell Core, aside from the error formatting changes.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Throw vs Write-Error</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>One thing I want to close with is a reminder on when to use <strong>Throw</strong> and when to use <strong>Write-Error</strong> in your own code.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Use the <strong>Throw</strong> statement when you are certain that the error condition is serious and should immediately halt the pipeline from further processing.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Use the <strong>Write-Error</strong> cmdlet to write an error to the error stream, but additional processing may still be able to continue. </p>
+<!-- /wp:paragraph -->
