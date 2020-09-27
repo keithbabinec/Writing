@@ -1,0 +1,275 @@
+<!-- wp:paragraph -->
+<p>Earlier this year the Microsoft Identity Platform team <a href="https://developer.microsoft.com/en-us/identity/blogs/msal-js-2-0-supports-authorization-code-flow-is-now-generally-available/">shared new guidance</a> that recommends using the OAuth 2.0 Authorization Code flow for browser based web applications. The reason for this is that new browser security changes are going to cause problems for the commonly used <a href="https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-implicit-grant-flow">implicit grant flow</a> pattern.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Although I found plenty of great code samples and quickstart material for using the authorization code flow <a href="https://docs.microsoft.com/en-us/azure/active-directory/develop/tutorial-v2-javascript-auth-code">with graph API</a>, it took me a while to figure out how to use it against an ASP.NET Core Web API. The goal of this post is to provide an end-to-end setup guide with source code for the protected web API resource scenario that uses RBAC roles.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>Complete source code</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>If you want to jump straight to the complete source code: https://github.com/keithbabinec/SampleMsalAuthorizationCodeFlow</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>End-to-end setup guide</h2>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Part 1: Azure AD configuration</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><em>Scripted solutions are linked when available. Some steps are manual due lack of Azure tooling support for the operation or information is highly specific to your own environment.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>1. Create security groups in Azure AD that will be used for your sample application</strong>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I would recommend creating one group per role. For example if I want to have application roles defined for standard users and admin users, I would make two new AAD security groups called <em>MyAppUsersGroup</em> and <em>MyAppAdministratorsGroup</em>. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>Script solution:</em> <a href="https://github.com/keithbabinec/SampleMsalAuthorizationCodeFlow/blob/master/setup-scripts/new-rbac-groups.ps1">new-rbac-groups.ps1</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>2. Assign at least one user to each application role security group created in step 1.</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Manual step / no script.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>3. Create and configure the Azure AD app registration.</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>Create a new Azure AD app registration with the following options:<ul><li>Supported account types: Accounts in this organizational directory only (Single tenant).</li><li>Redirect URI: <ul><li>Type: Single-page application (SPA)</li><li>Address: local debug address, usually <a href="https://localhost:3000">https://localhost:3000</a></li></ul></li></ul></li><li>Define custom app roles in your application manifest (<a href="https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-add-app-roles-in-azure-ad-apps">instructions</a>). These roles should reflect the same roles you created groups for in step 1.</li><li>Under the <strong>Expose an API</strong> section of the app registration:<ul><li>Set the Application ID URI (using default format: api://&lt;appid&gt;)</li><li>Define <strong><span style="text-decoration:underline;">one</span></strong> application scope (name doesn't matter, but make it so both admins and users can consent). </li></ul></li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p><em>Script solution:</em> <a href="https://github.com/keithbabinec/SampleMsalAuthorizationCodeFlow/blob/master/setup-scripts/new-app-registration.ps1">new-app-registration.ps1</a>. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>4. Create and configure the service principal (enterprise application).</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>From the app registration's <strong>Overview</strong><em> </em>page, click on the link below menu item <strong>Managed application in local directory</strong>. <ul><li><em>Script solution</em>: <a href="https://github.com/keithbabinec/SampleMsalAuthorizationCodeFlow/blob/master/setup-scripts/new-app-serviceprincipal.ps1">new-app-serviceprincipal.ps1</a>.</li></ul></li><li>From the enterprise application's <strong>Properties</strong> page, set the <strong>User assignment required</strong> property to <em>Yes</em>. This ensures that only pre-authorized users can sign in.<ul><li>Manual step / no script.</li></ul></li><li>From the enterprise application's <strong>Users and groups</strong> page, assign the AAD groups from step 1 to the corresponding application roles defined in step 3.<ul><li>Manual step / no script.</li></ul></li></ul>
+<!-- /wp:list -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Part 2: ASP.NET Web API setup</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>1. Create the dotnet core project.</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Create a new ASP.NET Core 3.x Web API project. If you are creating the project from the Visual Studio template, you don't need to specify any authentication mechanisms. Just select the Web API template type. You will need to add a nuget package reference to <em>Microsoft.Identity.Web</em>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>2. Startup.cs configuration.</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Under the <strong>ConfigureServices()</strong> method of <a href="https://github.com/keithbabinec/SampleMsalAuthorizationCodeFlow/blob/master/web-api/Startup.cs">Startup.cs</a>, you will need to configure both Authentication and Authorization services:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp"} -->
+<pre class="wp-block-syntaxhighlighter-code">// add authentication support (bearer token validation).
+// configuration values are pulled from "AzureAD" section of app settings config.
+// this uses Microsoft Identity platform (AAD v2.0).
+services.AddMicrosoftWebApiAuthentication(Configuration, "AzureAd");
+
+// add authorization support.
+services.AddAuthorization();</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>Under the <strong>Configure()</strong> method of Startup.cs, you will need to add those services to the request pipeline:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp"} -->
+<pre class="wp-block-syntaxhighlighter-code">app.UseAuthentication();
+app.UseAuthorization();</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p><strong>3. Controller configurations.</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Add an Authorize attribute for each controller or route that you want to enable authorization for. In the roles string, specify the app manifest defined role that should have access to the route. Example:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"csharp"} -->
+<pre class="wp-block-syntaxhighlighter-code">[Route("api/[controller]")]
+[ApiController]
+public class TestController : ControllerBase
+{
+   [HttpGet()]
+   [Route("standard")]
+   [Authorize(Roles = "MyAppUsersRole")]
+   public async Task&lt;ActionResult&lt;string>> StandardRoleGet()
+   {
+       // implementation code
+   }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p><strong>4. App settings configuration</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Finally we want to add an AzureAd section to the <a href="https://github.com/keithbabinec/SampleMsalAuthorizationCodeFlow/blob/master/web-api/appsettings.json">appsettings.json</a> (and any environment specific configs) that provides tenant authority information and app registration details. Example:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code">"AzureAd": {
+  "Instance": "https://login.windows.net",
+  "ClientId": "-- use client ID of app registration --",
+  "TenantId": "-- use Azure tenant (directory) ID --",
+  "Audience": "api://[-- use client ID of app registration --]"
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Part 3: React client setup</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>1. Create the react project and add dependencies.</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I like to bootstrap things with <a href="https://reactjs.org/docs/create-a-new-react-app.html#create-react-app">create-react-app</a>. Here is a command to generate a React-Typescript project:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"bash"} -->
+<pre class="wp-block-syntaxhighlighter-code">npx create-react-app web-client --template typescript</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>At a minimum you will need the <a href="https://github.com/AzureAD/microsoft-authentication-library-for-js">MSAL client</a>. An http client like Axios is also helpful since we are making web calls.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"bash"} -->
+<pre class="wp-block-syntaxhighlighter-code">npm install @azure/msal-browser
+npm install axios</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p><strong>2. Configure MSAL objects and call MSAL APIs.</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The following is a <strong>high-level overview</strong>. For full context, view the <a href="https://github.com/keithbabinec/SampleMsalAuthorizationCodeFlow/tree/master/web-client">sample application source</a> that provides wrapper classes around these core ideas.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>Create a wrapper class that holds your MSAL <strong>PublicClientApplicationObject</strong> and the <strong>AccountInfo </strong>of the currently logged in user.<ul><li>The public client app object constructor will require a config object where you can specify your Azure AD client app ID, the tenant URI, and the redirect URL (usually app home/index).</li></ul></li><li>Have a UI button that calls <strong>&lt;msal-app&gt;.loginRedirect()</strong>.<ul><li>The user is immediately redirected to the Microsoft Identity Platform so they can sign in.</li><li>In the login request payload, specify the exact scope created in your app registration. <ul><li>Example: "api://&lt;app-client-id-guid&gt;/Scope.Name"</li></ul></li></ul></li><li>In your main <em>index.(js|ts|tsx)</em> file, ensure that you call <strong>&lt;msal-app&gt;.handleRedirectPromise()</strong>.<ul><li>This is invoked on all page loads to handle either (1) a redirect back from the identity platform, or (2) pull cached user details.</li></ul></li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p><strong>3. Call a protected web API resource.</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>Before each call to a protected web API resource, call <strong>&lt;msal-app&gt;.acquireTokenSilent()</strong> to fetch a token. <ul><li>If the current access token is still valid it will be used, otherwise MSAL will attempt to fetch a new one silently.</li><li>The scope specified in the payload must match the scope created in your app registration. </li></ul></li><li>Pass in the access token from MSAL into the authorization header for API calls to the protected web API resource.</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:heading -->
+<h2>Q&amp;A</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>1. Why does my call to the /Authorize endpoint fail with an error message saying that the client_assertion or client_secret is missing?</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>A: Authorization code flow only works if your app registration's redirect URI is of type "SPA". If it is incorrectly set to type "Web" (which is the default), then the /Authorize call will fail.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>2. Why can't I assign users or groups to my app registration roles?</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>A: Make sure that your app registration wasn't registered as a public client, because <a href="https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-restrict-your-app-to-a-set-of-users#supported-app-configurations">public clients do not support RBAC</a>. Also note that assigning Groups to App Roles is only available with Azure AD Premium. If you have standard Azure AD then you will need to assign users directly to the app roles.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>3. I asked for multiple scopes in a token request but only received some of the scopes, why is that?</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>A: Each call to MSAL's loginRedirect or acquireToken operations must only specify scopes for a single resource. If you specify scopes for multiple resources (for example one scope for Graph and one for your ASP.NET web API), only the scopes from the first resource are returned. <a href="https://github.com/AzureAD/microsoft-authentication-library-for-js/blob/dev/lib/msal-browser/docs/resources-and-scopes.md#working-with-multiple-resources">More information here</a>.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>4. Why did the example instructions create one App registration scope if we had multiple app roles defined?</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>Scopes are linked with the app registration itself and not with specific user roles. All authorized users (regardless of role) are given the application scopes defined in the app registration. As a result, our API is concerned with making sure that users have the correct client/audience and that they are authorized via roles.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>5. Why is there only one app registration instead of two (split for client app and web api app)?</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em>This flow should work fine in either a single-app or multi-app registration setup. I choose single app here for simplicity because: </em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li><em>I only have one web client now and I don't plan on adding multiple clients for this same API later. </em></li><li><em>The API itself isn't acting as a client to another resource.</em></li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p><strong>6. How can I examine the contents of a token returned from the identity platform?</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><em><a href="https://jwt.ms">https://jwt.ms</a> is a great tool for decoding the token to examine claims for debugging purposes.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Screenshots</h2>
+<!-- /wp:heading -->
+
+<!-- wp:image {"id":2036,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/09/auth-code-flow-1.png?w=1024" alt="" class="wp-image-2036"/><figcaption>App before signing in</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":2038,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/09/auth-code-flow-2.png?w=1024" alt="" class="wp-image-2038"/><figcaption>Logging in at the Microsoft Identity Platform</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":2039,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/09/auth-code-flow-3.png?w=1024" alt="" class="wp-image-2039"/><figcaption>Redirect after login</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":2040,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/09/auth-code-flow-4.png?w=1024" alt="" class="wp-image-2040"/><figcaption>Result after calling an endpoint</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":2042,"sizeSlug":"large"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2020/09/auth-code-flow-5.png?w=1024" alt="" class="wp-image-2042"/><figcaption>Fiddler trace showing successful API call with bearer token.</figcaption></figure>
+<!-- /wp:image -->
