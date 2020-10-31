@@ -1,0 +1,111 @@
+<!-- wp:paragraph -->
+<p>This post is the first in a two part series on React JS. Since there are already tons of great <a href="https://reactjs.org/docs/getting-started.html" data-type="URL" data-id="https://reactjs.org/docs/getting-started.html">docs</a> and <a href="https://www.udemy.com/" data-type="URL" data-id="https://www.udemy.com/">training</a> <a href="https://www.pluralsight.com/" data-type="URL" data-id="https://www.pluralsight.com/">material</a> for React, the focus of these posts is to highlight some common design decisions and Azure ecosystem build/deploy problems that folks new to React typically run into. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>This particular post focuses on the key decisions you should make before you start writing any code.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>Decision 1: Do I even need to use React at all?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Don't immediately start a React (or competing framework) project unless you know you need it. Otherwise you will waste a lot of time adding unnecessary complexity to your project.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Here are two common scenarios where it does make sense to use:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li><strong>Websites that have frequent state changes. </strong><br><em>Examples: Live refreshing social media feed. A monitoring dashboard that shows realtime data.<br></em></li><li><strong>Component code-reuse scenarios. </strong><br><em>Example: UI elements/controls that you want to build and use across multiple pages or multiple websites</em>.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:heading -->
+<h2>Decision 2: Should I use TypeScript of JavaScript?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><a href="https://www.typescriptlang.org/" data-type="URL" data-id="https://www.typescriptlang.org/">TypeScript</a> is great. You should use it if you want to catch more bugs before they reach production. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>I would only recommend new projects in JavaScript if you don't like safety checks or if you have an unusual toolchain situation that dictates you can't use TypeScript.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Decision 3: Should I use React or React Native?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Use React if your application is only going to live in the web browser. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Choose <a href="https://reactnative.dev/" data-type="URL" data-id="https://reactnative.dev/">React Native</a> if you want your application to look and feel like its a native application in the target operating system. There are a lot of benefits to this approach, but is going to take a bit more work then just living in the web browser. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Decision 4: Should I use progressive web app (PWA) features or not?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Progressive web apps offer some helpful benefits:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>You can 'install' a PWA to the home-screen.</li><li>They support push notifications.</li><li>(If you built it correctly) They can be used in offline mode.</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>The offline support is a pretty key decision factor here. You will likely design your application differently if you anticipate needing partial offline support.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Decision 5: Should I use (ES6) class components or function components?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>React supports defining components as <a href="https://reactjs.org/docs/react-component.html" data-type="URL" data-id="https://reactjs.org/docs/react-component.html">class objects</a> or as <a href="https://reactjs.org/docs/hooks-intro.html" data-type="URL" data-id="https://reactjs.org/docs/hooks-intro.html">functions</a>. It actually doesn't matter which one you choose here, but you should think about it before you start your project so you can enforce consistency.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Function components with hooks are the newer style. They can help decouple state logic or lifecycle hooks into smaller pieces outside of the components, which is good for organization and keeping components small. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>However class components will still continue to be supported and sometimes preferred for stylistic reasons (OOP vs Functional programming).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Decision 6: Should I use a state management store?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Avoid the common mistake of selecting a complex state management process. Think about where and how you will need to maintain state inside the UI of your application. Many applications can get away with <a href="https://reactjs.org/docs/state-and-lifecycle.html" data-type="URL" data-id="https://reactjs.org/docs/state-and-lifecycle.html">component local state</a>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>However if you do really have complex state needs, this is what I would recommend:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Choose <a href="https://redux.js.org/" data-type="URL" data-id="https://redux.js.org/">Redux</a> if you love functional programming and want time travel state support in your application (history/undo).<br></li><li>Choose <a href="https://mobx.js.org/" data-type="URL" data-id="https://mobx.js.org/">MobX</a> if want to get up and running quickly with less boilerplate code than redux.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:heading -->
+<h2>Decision 7: Should I use client-side or server side rendering?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Choose client-side rendering if you want the easier, default React experience, and you want to reduce the number of the trips to the server for view changes.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Choose server side rendering (w/ <a href="https://nextjs.org/" data-type="URL" data-id="https://nextjs.org/">Next.js</a>) if you have critical search engine optimization (SEO) needs, or you need to render complex pages for low-performance clients. </p>
+<!-- /wp:paragraph -->
