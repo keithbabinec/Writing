@@ -1,0 +1,369 @@
+<!-- wp:paragraph -->
+<p>This post is the second in a two part series on React JS. The <a href="https://keithbabinec.com/2020/10/30/design-decisions-to-make-before-starting-a-new-react-js-project/">first post</a> covered design decisions to make before starting a project, and this post provides tips for building and deploying React web applications in Microsoft Azure with Azure Pipelines.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>Preparing build output for multiple environments. </h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>A prerequisite step to building the Azure Pipelines YAML file is to review the web application's build commands and environment variables.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The build output for a React project is a static bundle of HTML, CSS, and JavaScript files. If we have environment specific variables (such as an API server address), then they need to be baked into the JS bundle for each environment (ex: development, pre-production, production, etc). </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>If you bootstrapped your project with Create React App (CRA) then the toolchain automatically supports environment variables with the <a href="https://create-react-app.dev/docs/adding-custom-environment-variables">dotenv package</a>. Using dotenv allows you to create environment variable files (.env) for each target environment for your deployments.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Then if you add the <a href="https://www.npmjs.com/package/env-cmd">env-cmd</a> package to your dependencies, you can build environment specific bundles like this in your package.json:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code">"scripts": {
+  "start": "react-scripts start",
+  "build:development": "env-cmd -f .env.dev react-scripts build",
+  "build:preproduction": "env-cmd -f .env.ppe react-scripts build",
+  "build:production": "env-cmd -f .env.prod react-scripts build",
+  "test": "react-scripts test",
+  "eject": "react-scripts eject"
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>Then you can run the build for a specific environment:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"bash"} -->
+<pre class="wp-block-syntaxhighlighter-code">npm run-script build:production</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>These environment files and 'build' commands should be in place before moving to the next step.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Configuring an Azure Pipeline to build, test, and publish artifacts</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Start by creating a new/empty Azure Pipelines <a href="https://aka.ms/yaml" data-type="URL" data-id="https://aka.ms/yaml">YAML CI file</a>. Towards the top of the file, we will include:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>A continuous integration (CI) and pull request (PR) trigger that initiate the builds automatically.</li><li>A specified build image.</li><li>A variable that has the root project folder (since we re-use it so many times in the stages).</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:syntaxhighlighter/code -->
+<pre class="wp-block-syntaxhighlighter-code"># Azure DevOps YAML pipeline
+# File part 1
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - 'src/MyProjectRootFolder/*'
+
+pr:
+  autoCancel: true
+  branches:
+    include:
+      - '*'
+  paths:
+    include:
+      - 'src/MyProjectRootFolder/*'
+
+pool:
+  vmImage: windows-latest
+
+variables:
+- name: WebProjectRoot
+  value: src/MyProjectRootFolder</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>In the second part of the Azure Pipelines YAML file we perform the following tasks:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>Run the 'npm install' task to install the packages.</li><li>Run the build command for each deployment environment (ex: dev, ppe, production). In the example file here I'm just building for the 'development' environment, but this step would be repeated for each additional deployment environment you have.</li><li>Copy the build output to the Azure pipelines artifact staging directory.</li><li>Run the unit tests.</li><li>Publish the artifacts (if triggered from main branch).</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:syntaxhighlighter/code -->
+<pre class="wp-block-syntaxhighlighter-code"># Azure DevOps YAML pipeline
+# File part 2
+
+stages:
+- stage: BuildStage
+  displayName: 'Build, Test, and Publish'
+  jobs:
+    - job: BuildJob
+      steps:
+        - task: CmdLine@2
+          name: Install
+          displayName: Install Packages
+          inputs:
+            script: 'npm install'
+            workingDirectory: '$(WebProjectRoot)'
+            failOnStderr: false
+
+        - task: CmdLine@2
+          name: BuildDev
+          displayName: Create Build Artifact (Dev)
+          inputs:
+            script: 'npm run-script build:development'
+            workingDirectory: '$(WebProjectRoot)'
+            failOnStderr: true
+
+        - task: ArchiveFiles@2
+          name: ZipArtifactsDev
+          displayName: Zip and Copy to Staging (Dev)
+          inputs:
+            rootFolderOrFile: '$(WebProjectRoot)/build'
+            archiveFile: '$(Build.ArtifactStagingDirectory)/deployment.development.zip'
+            includeRootFolder: false
+
+        - task: CmdLine@2
+          name: Test
+          displayName: Run Unit Test Suite
+          inputs:
+            script: 'npm test'
+            workingDirectory: '$(WebProjectRoot)'
+            failOnStderr: false
+
+        - task: PublishBuildArtifacts@1
+          name: Publish
+          displayName: Publish Zip Artifact
+          condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/heads/main'))
+          inputs:
+            pathtoPublish: '$(Build.ArtifactStagingDirectory)'
+            ArtifactName: 'WebDrop'</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>Once the YAML file is checked into source control, <a href="https://docs.microsoft.com/en-us/azure/devops/pipelines/create-first-pipeline" data-type="URL" data-id="https://docs.microsoft.com/en-us/azure/devops/pipelines/create-first-pipeline">create the pipeline</a> and specify the YAML file as the definition. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Azure infrastructure preparation</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The next step in the pipeline is to make sure the Azure App Service resource is deployed and ready.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>We can do this by creating a resource group in the Azure subscription and then running an ARM template deployment to create an <a href="https://docs.microsoft.com/en-us/azure/templates/microsoft.web/serverfarms" data-type="URL" data-id="https://docs.microsoft.com/en-us/azure/templates/microsoft.web/serverfarms">App Service hosting plan resource</a> and an <a href="https://docs.microsoft.com/en-us/azure/templates/microsoft.web/sites" data-type="URL" data-id="https://docs.microsoft.com/en-us/azure/templates/microsoft.web/sites">App Service resource</a>. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The <a href="https://docs.microsoft.com/en-us/azure/devops/pipelines/tasks/deploy/azure-resource-group-deployment" data-type="URL" data-id="https://docs.microsoft.com/en-us/azure/devops/pipelines/tasks/deploy/azure-resource-group-deployment">AzureResourceGroupDeployment</a> YAML task or the <a href="https://docs.microsoft.com/en-us/azure/devops/pipelines/tasks/deploy/azure-powershell" data-type="URL" data-id="https://docs.microsoft.com/en-us/azure/devops/pipelines/tasks/deploy/azure-powershell">Azure PowerShell</a> YAML task are helpful options, depending on your preference. Here is an example ARM template that deploys both resources: </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"jscript"} -->
+<pre class="wp-block-syntaxhighlighter-code">{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "locationName": {
+      "type": "string"
+    },
+    "appServicePlanName": {
+      "type": "string"
+    },
+    "websiteName": {
+      "type": "string"
+    }
+  },
+  "variables": { },
+  "resources": [
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2019-08-01",
+      "name": "[parameters('appServicePlanName')]",
+      "location": "[parameters('locationName')]",
+      "sku": {
+        "name": "S1",
+        "tier": "Standard",
+        "size": "S1",
+        "family": "S",
+        "capacity": 1
+      },
+      "kind": "app",
+      "properties": {
+        "perSiteScaling": false,
+        "reserved": false,
+        "targetWorkerCount": 0,
+        "targetWorkerSizeId": 0
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2019-08-01",
+      "name": "[parameters('websiteName')]",
+      "location": "[parameters('locationName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]"
+      ],
+      "kind": "app",
+      "properties": {
+        "enabled": true,
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+        "reserved": false,
+        "siteConfig": {
+          "alwaysOn": true,
+          "http20Enabled": true,
+          "minTlsVersion": "1.2"
+        },
+        "clientAffinityEnabled": true,
+        "httpsOnly": true
+      }
+    }
+  ],
+  "outputs": { }
+}</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>If you have multiple target deployment environments (dev, ppe, production, etc), then run the ARM template deployment once for each environment-- but pass in different parameter values for the location, app service name and hosting plan name.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Configuring an Azure Pipeline to deploy code artifacts to Azure App Service</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>At this point we should have artifacts publishing to our package feeds automatically, and an Azure App Service in place and ready for deployment.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>We can take our existing Azure Pipelines file an add some deployment variables. At bare minimum we need the Azure service connection name and the name of the Azure app service to deploy to.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>In this example I have prefixed the variable names with the deployment environment and just included the 'development' environment for brevity:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code -->
+<pre class="wp-block-syntaxhighlighter-code"># Azure DevOps YAML pipeline
+# File part 4
+
+variables:
+- name: Development.Azure.SubscriptionName
+  value: 'MyAzureSubscriptionServiceConnectionName'
+- name: Development.Azure.WebAppName
+  value: 'development-env-my-webapp-name'</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>Then in the stages section, we can add a new stage for the deployment of each target deployment environment. Again I just have one environment shown here but you can easily add the remaining environments. There are two main tasks:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list -->
+<ul><li>Download the published artifacts.</li><li>Run an Azure Web App Deployment task.</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:syntaxhighlighter/code -->
+<pre class="wp-block-syntaxhighlighter-code"># Azure DevOps YAML pipeline
+# File part 5
+
+- stage: DeployToDevelopmentEnv
+  displayName: 'Deploy to Development Environment'
+  condition: and(succeeded(), eq(variables['build.sourceBranch'], 'refs/heads/main'))
+  dependsOn: BuildStage
+  jobs:
+    - job: DeployArtifact
+      steps:
+        - task: DownloadBuildArtifacts@0
+          displayName: 'Download Build Artifacts'
+          inputs:
+            artifactName: 'WebDrop'
+            
+        - task: AzureRmWebAppDeployment@4
+          displayName: 'Deploy artifact to Azure App Service'
+          inputs:
+            ConnectedServiceName: $(Development.Azure.SubscriptionName)
+            WebAppName: $(Development.Azure.WebAppName)
+            Package: "$(System.ArtifactsDirectory)/WebDrop/deployment.development.zip"
+            UseWebDeploy: true
+            TakeAppOfflineFlag: false
+            RenameFilesFlag: false</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>With all of the build and deployment steps in the YAML pipelines file, it has likely grown to a pretty significant size. To break it into smaller, more re-usable pieces, leverage the <a href="https://docs.microsoft.com/en-us/azure/devops/pipelines/process/templates" data-type="URL" data-id="https://docs.microsoft.com/en-us/azure/devops/pipelines/process/templates">templates feature</a>. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>This is especially helpful when you have multiple environments and want to avoid duplicate the same YAML steps over and over for each environment.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Adding a web.config re-write rule for React Router</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>The final setup task is optional, but recommended if you have URL routing inside your web app. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><a href="https://reactrouter.com/web/guides/quick-start">React Router</a> is the standard URL router for React projects. A common issue for web app deployments in Azure App Service is handling the confusion between your application's virtual router and the server-side routing that naturally occurs. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>More specifically: the application routing works if you entered the site from the default route (index.html loads), but doesn't work when you explicitly visit a route from the browser's address bar (usually resulting in a 404 not found).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The issue here is that the Azure App Service web server (IIS) can't find your virtual route -- and it needs to be told to redirect those virtual routes back to index.html where they can be handled by your virtual router (React Router). </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The solution is to create a new web.config file with the re-write/redirect rule (below), and then deploy that file to the App Service in the same folder as the root of your static bundle.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"xml"} -->
+<pre class="wp-block-syntaxhighlighter-code">&lt;?xml version="1.0" encoding="UTF-8"?>
+&lt;configuration>
+  &lt;system.webServer>
+    &lt;rewrite>
+      &lt;rules>
+        &lt;rule name="Rewrite Text Requests" stopProcessing="true">
+          &lt;match url=".*" />
+          &lt;conditions>
+            &lt;add input="{HTTP_METHOD}" pattern="^GET$" />
+            &lt;add input="{HTTP_ACCEPT}" pattern="^text/html" />
+            &lt;add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+          &lt;/conditions>
+          &lt;action type="Rewrite" url="/index.html" />
+        &lt;/rule>
+      &lt;/rules>
+    &lt;/rewrite>
+  &lt;/system.webServer>
+&lt;/configuration></pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>Assuming the file is checked into source control in the root of your web project, you can add it to your artifact zip with the following task:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code -->
+<pre class="wp-block-syntaxhighlighter-code">- task: ArchiveFiles@2
+  name: AddWebConfigDev
+  displayName: Add Web.Config (Dev)
+  inputs:
+    rootFolderOrFile: '$(WebProjectRoot)/web.config'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/deployment.development.zip'
+    includeRootFolder: false
+    replaceExistingArchive: false
+</pre>
+<!-- /wp:syntaxhighlighter/code -->
