@@ -1,0 +1,150 @@
+<!-- wp:paragraph -->
+<p>A couple years back I wrote a tutorial on how to highlight <strong>blocked</strong> work items on an Azure DevOps sprint board (<a href="https://keithbabinec.com/2019/10/08/how-to-visually-highlight-blocked-work-items-on-an-azure-devops-sprint-board/" data-type="post" data-id="1422">here</a>). This post is a similar walkthrough but describes the process for <strong>overdue</strong> and <strong>due soon</strong> work items.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Providing a visual highlight for these items is a great way for the development team and product owners to quickly see which work is considered time sensitive and potentially overdue. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Note: </strong><em>These changes do not require any extensions, but they do require project collection administrator access rights to complete.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>When should I use a due-date field?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>Due date</strong> is one of the <a href="https://docs.microsoft.com/en-us/azure/devops/boards/work-items/guidance/work-item-field?view=azure-devops#alphabetical-index" data-type="URL" data-id="https://docs.microsoft.com/en-us/azure/devops/boards/work-items/guidance/work-item-field?view=azure-devops#alphabetical-index">predefined field types</a> in Azure DevOps that you can add to work item templates. Once you have added this field to a work item template (like stories, tasks, bugs, etc), I would suggest only entering due dates on work items that have hard deadlines. Setting and managing due dates for every single work item takes too much overhead otherwise. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>In this tutorial we will leave it as an optional field and only set the due date on a work item that has a real-world due date. For example a work item for rotating a TLS/SSL certificate on a web server that expires soon.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Part 1: Add the due-date field to your work item templates</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>1. Find your project level settings. In the project sidebar in Azure DevOps, it can be found at the very bottom as Project settings with a little gear icon</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>2. On the Overview tab from the Project settings page, click on the process model associated with your team project.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Important:</strong> <em>You cannot modify the base process models built into Azure DevOps. If you are using a base process model such as Scrum, Agile, or Basic — you will need to switch to using a custom process that inherits from a base process. This will allow you to modify the process details. See <a href="https://docs.microsoft.com/en-us/azure/devops/organizations/settings/work/manage-process?view=azure-devops" data-type="URL" data-id="https://docs.microsoft.com/en-us/azure/devops/organizations/settings/work/manage-process?view=azure-devops">this tutorial</a> if you need to change the project’s process to a new custom process.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":2520,"width":768,"height":509,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large is-resized"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-1-project-process.png?w=1024" alt="" class="wp-image-2520" width="768" height="509"/><figcaption>Screenshot: selecting the custom process</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>3. Once inside your custom/editable process model definition, click on the definition object for <strong>User Story</strong>.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":2522,"width":768,"height":383,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large is-resized"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-2-project-work-item-templates.png?w=1024" alt="" class="wp-image-2522" width="768" height="383"/><figcaption>Screenshot: the process model work item templates</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>4. Click on the <strong>New Field</strong> button in the top left corner of the <strong>Layout</strong> section of the work item definition.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>5. On the <strong>Definition</strong> tab of the <strong>Add a field to Task</strong> pop-up, select the <strong>Use an existing field</strong> drop-down and select the <strong>Due Date</strong> field. On the <strong>Options </strong>tab we will leave the defaults (field should be optional).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":2528,"width":443,"height":506,"sizeSlug":"large","linkDestination":"none","className":"is-style-default"} -->
+<figure class="wp-block-image size-large is-resized is-style-default"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-3b-add-field.png?w=590" alt="" class="wp-image-2528" width="443" height="506"/><figcaption>Screenshot: Adding a due-date field to the user story work item template</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>6. After adding the field you should see it on the work item definition's layout. Repeat the above steps for other work item types if you want to add due dates to other items, like bugs or tasks.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Part 2: Update the sprint board tile card styles</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Now that the work item templates have the <strong>Due date </strong>field, we need to add style changes to the sprint board tile cards to provide the visual highlighting effect.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>1. Click on the gear icon in the top right of your sprint board to view the sprint board settings.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":2533,"width":768,"height":407,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large is-resized"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-4-sprint-board-settings.png?w=1024" alt="" class="wp-image-2533" width="768" height="407"/><figcaption>Screenshot: The sprint board settings icon</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>2. In the <strong>User Story</strong> section, under the <strong>Fields</strong> tab, click on the <strong>+ Field </strong>button under <strong>Additional fields</strong>. Select the <strong>Due date</strong> field from the drop-down menu. I would also recommend unchecking the <strong>Show empty fields</strong> option checkbox here too. Since not all work items will have due dates, we should hide this field on the tile card when it is empty.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":2536,"width":768,"height":505,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large is-resized"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-5b-add-field-to-card.png?w=1024" alt="" class="wp-image-2536" width="768" height="505"/><figcaption>Screenshot: Adding the new field and unchecking the 'show empty fields' box.</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>3. Move on to the <strong>Styles </strong>tab for the dialog window. We are going to create two styling rules here: one for <strong>overdue </strong>items, and one for items <strong>due soon</strong>. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Note:</strong> <em>@Today is a special work item query language (WIQL) operator that represents the current date. You can use this in the rule comparisons.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong>Tip:</strong> <em>If you already use tile card color rules for other purposes (like blocked work), an alternative is to style the work item title.</em></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:preformatted -->
+<pre class="wp-block-preformatted">Rule name: Overdue work items
+Card color: Red
+Rule criteria:
+1. Due Date &lt; @Today</pre>
+<!-- /wp:preformatted -->
+
+<!-- wp:preformatted -->
+<pre class="wp-block-preformatted">Rule name: Due-soon work items
+Card color: Yellow
+Rule criteria: 
+1. Due Date &gt;= @Today
+2. Due Date &lt;= @Today + 14</pre>
+<!-- /wp:preformatted -->
+
+<!-- wp:image {"id":2539,"width":768,"height":568,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large is-resized"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-6-styling-rule-overdue.png?w=1024" alt="" class="wp-image-2539" width="768" height="568"/><figcaption>Screenshot: the overdue work items style rule</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":2541,"width":768,"height":578,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large is-resized"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-7-styling-rule-due-soon.png?w=1024" alt="" class="wp-image-2541" width="768" height="578"/><figcaption>Screenshot: the due-soon work items style rule</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>4. Save the new style settings, refresh the sprint board window, and then apply a due date to a User Story to test it out. Here is what it looks like on my screen for the different scenarios:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":2544,"width":424,"height":295,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large is-resized"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-8-final-1.png?w=848" alt="" class="wp-image-2544" width="424" height="295"/><figcaption>Screenshot: work items with and without due dates</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":2545,"width":512,"height":280,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large is-resized"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-9-final-2.png?w=1024" alt="" class="wp-image-2545" width="512" height="280"/><figcaption>Screenshot: work item due soon</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:image {"id":2546,"width":512,"height":275,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large is-resized"><img src="https://keithbabinec.files.wordpress.com/2021/02/overdue-items-10-final-3.png?w=1024" alt="" class="wp-image-2546" width="512" height="275"/><figcaption>Screenshot: overdue work item</figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p></p>
+<!-- /wp:paragraph -->
