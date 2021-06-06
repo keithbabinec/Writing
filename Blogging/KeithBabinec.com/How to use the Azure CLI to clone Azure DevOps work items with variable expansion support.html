@@ -1,0 +1,131 @@
+<!-- wp:paragraph -->
+<p>Azure DevOps provides several different ways to create or copy work items. In this post I dive into how to use one the newer methods: the Azure DevOps extension for Azure CLI. This toolset offers powerful automation opportunities to customize the work item clone process and add things like variable expansion.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:more -->
+<!--more-->
+<!-- /wp:more -->
+
+<!-- wp:heading -->
+<h2>Easier copy options</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Before reaching for the Azure CLI to solve this problem, you should double check if your scenario is solved by one of these easier built-in methods:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>If you want to capture a template of a work item and apply that template to new or existing work items without customization, then try <a href="https://docs.microsoft.com/en-us/azure/devops/boards/backlogs/work-item-template">work item templates</a>.</li><li>If you want to clone an existing work item (and children) to make an exact copy without customization, then you can use the <a href="https://docs.microsoft.com/en-us/azure/devops/boards/backlogs/copy-clone-work-items">clone feature</a>.</li><li>If you want to define a tree of work items in Excel or csv file and have Azure DevOps bulk create them for you, then you can use <a href="https://docs.microsoft.com/en-us/azure/devops/boards/backlogs/office/bulk-add-modify-work-items-excel">this process</a>.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:heading -->
+<h2>Why use the Azure CLI for this?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Individual Azure CLI work item operations are going to be significantly slower than bulk API calls and some of the operations in the Azure DevOps website, but the CLI offers two distinct advantages.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong><em>First</em></strong>, you can call the CLI operations in a loop over a large batch of work items and it supports fully unattended scenarios.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><strong><em>Second</em></strong>, you can deeply customize the clone process by specifying which fields to clone and use variable expansions.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>The following sections will explain how we can use the Azure CLI to accomplish this goal.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Step 1: Prerequisites</h2>
+<!-- /wp:heading -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>Install the <a href="https://docs.microsoft.com/en-us/cli/azure/install-azure-cli">Azure CLI</a>.</li><li>Install the <a href="https://docs.microsoft.com/en-us/azure/devops/cli">Azure DevOps extension for Azure CLI</a>.</li><li>Create a <a href="https://docs.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate">personal access token (PAT)</a> for Azure DevOps that has permissions to manage work items.</li><li>Test your connection by running <a href="https://docs.microsoft.com/en-us/azure/devops/cli/log-in-via-pat">az devops login</a>.</li></ol>
+<!-- /wp:list -->
+
+<!-- wp:heading -->
+<h2>Step 2: Download and review the clone script</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>I have uploaded an example clone script to GitHub that will perform the bulk of the work: <a href="https://github.com/keithbabinec/AzureDevOpsAutomation/blob/main/Scripts/New-ClonedWorkItemFromTemplate.ps1">New-ClonedWorkItemFromTemplate.ps1</a>. Download a copy of this file (or the contents) to your computer. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>This script uses <a href="https://docs.microsoft.com/en-us/cli/azure/boards/work-item?view=azure-cli-latest#az_boards_work_item_show">az boards work-item show</a> to fetch item details for the items we want to clone and <a href="https://docs.microsoft.com/en-us/cli/azure/boards/work-item?view=azure-cli-latest#az_boards_work_item_create">az boards work-item create</a> / <a href="https://docs.microsoft.com/en-us/cli/azure/boards/work-item?view=azure-cli-latest#az_boards_work_item_update">update</a> to create the new items and set additional fields. It also uses <a href="https://docs.microsoft.com/en-us/cli/azure/boards/work-item/relation?view=azure-cli-latest#az_boards_work_item_relation_add">az boards work-item relation add</a> to create parent/child work item links.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Step 3: Prepare work items to clone</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Find a work item you want to clone. After you have reviewed the fields to make sure they are ready, you can add inline variables. </p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Inline variables are an optional part of the clone script-- but they are a powerful way to provide customization for each cloned work item. This clone script supports variables wrapped with double-curly braces. Variable names should be word characters only (no spaces, special characters, etc).</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":2639,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2021/06/2-azdo-variable-definitions.png?w=1024" alt="" class="wp-image-2639"/><figcaption><em>Example inline variables that should be filled in during the clone operation.</em></figcaption></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2>Step 4: Call the clone script</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>We need to write some wrapper code to call the PowerShell clone script with our customized inputs. This example clones the example work item and uses variable expansion:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:syntaxhighlighter/code {"language":"powershell"} -->
+<pre class="wp-block-syntaxhighlighter-code"># set your Azure DevOps PAT to a process-scoped environment variable.
+# for unattended scenarios, you can pull this token from a secret store/vault.
+$env:AZURE_DEVOPS_EXT_PAT = "&lt;token>"
+
+# build a map of variable names to expand along with the values they should expand to.
+$map = new-object -typename 'System.Collections.Generic.Dictionary[System.String,System.String]'
+$map["ServiceName"] = "Storage Management Service"
+$map["SecurityProgramManagerName"] = "George"
+$map["DocumentLink"] = "https://internal-site/review-docs-v3"
+
+# call the script
+# be sure to specify the verbose flag to see logging output.
+.\New-ClonedWorkItemFromTemplate.ps1 -TemplateItemId 123456 -CloneChildWorkItems $true -Verbose -VariableExpansionMap $map</pre>
+<!-- /wp:syntaxhighlighter/code -->
+
+<!-- wp:paragraph -->
+<p>If you need to clone many work items in a batch: <em>foreach</em> around a list of service names and call the script with a slightly modified variable expansion map for each service.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2>Tip: Additional customization</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>One way to further customize the clone process is to add or remove the work item fields that will be copied into the new work item. I included a list of common items that are cloned for each work item, which you adjust as necessary for your work items:</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:image {"id":2661,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large"><img src="https://keithbabinec.files.wordpress.com/2021/06/3-azdo-fields-to-copy.png?w=914" alt="" class="wp-image-2661"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2>Warning: DevOps CLI bugs</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>I used <strong>Azure CLI v2.24.2</strong> and the <strong>Azure-Devops v0.18.0</strong> extension when writing the script. At the time of these versions, the devops extension had a couple bugs.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"ordered":true} -->
+<ol><li>The CLI commands failed when trying to save a work item with un-escaped quote characters in HTML fields like description and acceptance criteria. I worked around this in my example script by escaping them before sending them to the CLI commands.</li><li>The <strong><em>--Fields</em></strong> option on the create/update commands only supported 1 field at a time, even though the SDK help says otherwise. The workaround for this is to submit multiple calls to update-- which is terribly inefficient. </li></ol>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>I will be filing GitHub issues for these items and will remove the workarounds in future versions of the script when the bugs are fixed. This should also help make the clone operations run a lot faster.</p>
+<!-- /wp:paragraph -->
